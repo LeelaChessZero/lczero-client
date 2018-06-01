@@ -4,7 +4,7 @@ You will need to install Go 1.9 or later.
 
 Then, make sure to set up your GOPATH properly, eg. here is mine:
 ```
-export GOPATH=/Users/gary/go:/Users/gary/Development/leela-chess/go
+export GOPATH=${HOME}/go:${HOME}/src/lczero-client
 ```
 Here, I've set my system install of go as the first entry, and then the leela-chess/go directory as the second.
 
