@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"client/http"
+	"client"
 
 	"github.com/Tilps/chess"
 )
