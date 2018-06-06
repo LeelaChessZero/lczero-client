@@ -276,6 +276,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 	defer baseline.Input.Close()
 	defer func() {
 		log.Println("Waiting for baseline to exit.")
+		baseline.Cmd.Process.Kill()
 		baseline.Cmd.Wait()
 	}()
 
@@ -285,6 +286,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 	defer candidate.Input.Close()
 	defer func() {
 		log.Println("Waiting for candidate to exit.")
+		candidate.Cmd.Process.Kill()
 		candidate.Cmd.Wait()
 	}()
 
