@@ -11,7 +11,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -129,20 +128,9 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 	fmt.Println(resp.Header)
 	fmt.Println(body)
 
-	trainDir := filepath.Dir(path)
-	if _, err := os.Stat(trainDir); err == nil {
-		files, err := ioutil.ReadDir(trainDir)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("Cleanup training files:\n")
-		for _, f := range files {
-			fmt.Printf("%s/%s\n", trainDir, f.Name())
-		}
-		err = os.RemoveAll(trainDir)
-		if err != nil {
-			log.Fatal(err)
-		}
+	err = os.Remove(path)
+	if err != nil {
+		log.Printf("Failed to remove training file: %v", err)
 	}
 
 	return nil
@@ -250,7 +238,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file}
 			case strings.HasPrefix(line, "bestmove "):
-				fmt.Println(line)
+				//				fmt.Println(line)
 				c.BestMove <- strings.Split(line, " ")[1]
 			case strings.HasPrefix(line, "id name lczero "):
 				c.Version = strings.Split(line, " ")[3]
@@ -286,11 +274,19 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 	log.Println("launching 1")
 	baseline.launch(baselinePath, params, true)
 	defer baseline.Input.Close()
+	defer func() {
+		log.Println("Waiting for baseline to exit.")
+		baseline.Cmd.Wait()
+	}()
 
 	candidate := createCmdWrapper()
 	log.Println("launching 2")
 	candidate.launch(candidatePath, params, true)
 	defer candidate.Input.Close()
+	defer func() {
+		log.Println("Waiting for candidate to exit.")
+		candidate.Cmd.Wait()
+	}()
 
 	p1 := candidate
 	p2 := baseline
@@ -335,7 +331,6 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 		}
 		io.WriteString(p.Input, "position startpos"+moveHistory+"\n")
 		io.WriteString(p.Input, "go nodes 800\n")
-		log.Println("sent go")
 
 		select {
 		case bestMove, ok := <-p.BestMove:
@@ -384,6 +379,16 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	c := createCmdWrapper()
 	c.Version = "v0.10"
 	c.launch(networkPath, params /* input= */, false)
+	trainDir := ""
+	defer func() {
+		// Remove the training dir when we're done training.
+		if trainDir != "" {
+			err := os.RemoveAll(trainDir)
+			if err != nil {
+				log.Printf("Error removing train dir: %v", err)
+			}
+		}
+	}()
 	for done := false; !done; {
 		numGames := 1
 		select {
@@ -412,7 +417,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	log.Println("Waiting for lc0 to stop")
 	err := c.Cmd.Wait()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("lc0 exited with: %v", err)
 	}
 	log.Println("lc0 stopped")
 }
