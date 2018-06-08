@@ -449,17 +449,6 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	return path, nil
 }
 
-func validateParams(args []string) []string {
-	validArgs := []string{}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "--tempdecay") {
-			continue
-		}
-		validArgs = append(validArgs, arg)
-	}
-	return validArgs
-}
-
 func nextGame(httpClient *http.Client, count int) error {
 	nextGame, err := client.NextGame(httpClient, *hostname, getExtraParams())
 	if err != nil {
@@ -471,7 +460,6 @@ func nextGame(httpClient *http.Client, count int) error {
 		return err
 	}
 	log.Printf("serverParams: %s", serverParams)
-	serverParams = validateParams(serverParams)
 
 	if nextGame.Type == "match" {
 		log.Println("Starting match")
