@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"client"
@@ -93,42 +94,49 @@ func getExtraParams() map[string]string {
 }
 
 func uploadGame(httpClient *http.Client, path string, pgn string,
-	nextGame client.NextGameResponse, version string, retryCount uint) error {
+	nextGame client.NextGameResponse, version string) error {
 
-	elapsed := time.Since(startTime)
+	var retryCount uint32
+
+	for {
+		if retryCount > 3 {
+			return errors.New("UploadGame failed: Too many retries")
+		}
+
+		extraParams := getExtraParams()
+		extraParams["training_id"] = strconv.Itoa(int(nextGame.TrainingId))
+		extraParams["network_id"] = strconv.Itoa(int(nextGame.NetworkId))
+		extraParams["pgn"] = pgn
+		extraParams["engineVersion"] = version
+		request, err := client.BuildUploadRequest(*hostname+"/upload_game", extraParams, "file", path)
+		if err != nil {
+			log.Printf("BUR: %v", err)
+			return err
+		}
+		resp, err := httpClient.Do(request)
+		if err != nil {
+			log.Printf("http.Do: %v", err)
+			return err
+		}
+		body := &bytes.Buffer{}
+		_, err = body.ReadFrom(resp.Body)
+		if err != nil {
+			log.Print(err)
+			log.Print("Error uploading, retrying...")
+			time.Sleep(time.Second * (2 << retryCount))
+			continue
+		}
+		resp.Body.Close()
+//		fmt.Println(resp.StatusCode)
+//		fmt.Println(resp.Header)
+//		fmt.Println(body)
+		break
+	}
+
 	totalGames++
-	log.Printf("Completed %d games in %s time", totalGames, elapsed)
+	log.Printf("Completed %d games in %s time", totalGames, time.Since(startTime))
 
-	extraParams := getExtraParams()
-	extraParams["training_id"] = strconv.Itoa(int(nextGame.TrainingId))
-	extraParams["network_id"] = strconv.Itoa(int(nextGame.NetworkId))
-	extraParams["pgn"] = pgn
-	extraParams["engineVersion"] = version
-	request, err := client.BuildUploadRequest(*hostname+"/upload_game", extraParams, "file", path)
-	if err != nil {
-		log.Printf("BUR: %v", err)
-		return err
-	}
-	resp, err := httpClient.Do(request)
-	if err != nil {
-		log.Printf("http.Do: %v", err)
-		return err
-	}
-	body := &bytes.Buffer{}
-	_, err = body.ReadFrom(resp.Body)
-	if err != nil {
-		log.Print(err)
-		log.Print("Error uploading, retrying...")
-		time.Sleep(time.Second * (2 << retryCount))
-		err = uploadGame(httpClient, path, pgn, nextGame, version, retryCount+1)
-		return err
-	}
-	resp.Body.Close()
-	fmt.Println(resp.StatusCode)
-	fmt.Println(resp.Header)
-	fmt.Println(body)
-
-	err = os.Remove(path)
+	err := os.Remove(path)
 	if err != nil {
 		log.Printf("Failed to remove training file: %v", err)
 	}
@@ -385,14 +393,16 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	defer func() {
 		// Remove the training dir when we're done training.
 		if trainDir != "" {
+			log.Printf("Removing traindir: %s", trainDir)
 			err := os.RemoveAll(trainDir)
 			if err != nil {
 				log.Printf("Error removing train dir: %v", err)
 			}
 		}
 	}()
+	wg := &sync.WaitGroup{}
+	numGames := 1
 	for done := false; !done; {
-		numGames := 1
 		select {
 		case <-doneCh:
 			done = true
@@ -412,7 +422,13 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
-			go uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version, 0)
+			trainDir = path.Dir(gi.fname)
+			log.Printf("trainDir=%s", trainDir)
+			wg.Add(1)
+			go func() {
+				uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version)
+				wg.Done()
+			}()
 		}
 	}
 
@@ -422,6 +438,9 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 		fmt.Printf("lc0 exited with: %v", err)
 	}
 	log.Println("lc0 stopped")
+
+	log.Println("Waiting for uploads to complete")
+	wg.Wait()
 }
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
@@ -511,7 +530,6 @@ func nextGame(httpClient *http.Client, count int) error {
 			}
 		}()
 		train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
-		//train(httpClient, nextGame, networkPath, count, []string{"--visits=800"}, doneCh)
 		return nil
 	}
 
@@ -521,6 +539,7 @@ func nextGame(httpClient *http.Client, count int) error {
 func main() {
 	flag.Parse()
 
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if len(*user) == 0 || len(*password) == 0 {
 		*user, *password = readSettings("settings.json")
 	}
