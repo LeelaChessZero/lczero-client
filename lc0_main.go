@@ -187,7 +187,7 @@ func createCmdWrapper() *cmdWrapper {
 	c := &cmdWrapper{
 		gi:       make(chan gameInfo),
 		BestMove: make(chan string),
-		Version: "v0.10.0"
+		Version: "v0.10.0",
 	}
 	return c
 }
@@ -251,6 +251,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 				c.BestMove <- strings.Split(line, " ")[1]
 			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
 				c.Version = strings.Split(line, " ")[6]
+				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				break
 				fallthrough
