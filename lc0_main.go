@@ -89,7 +89,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "10",
+		"version":  "13",
 	}
 }
 
@@ -187,6 +187,7 @@ func createCmdWrapper() *cmdWrapper {
 	c := &cmdWrapper{
 		gi:       make(chan gameInfo),
 		BestMove: make(chan string),
+		Version: "v0.10.0"
 	}
 	return c
 }
@@ -248,8 +249,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
 				c.BestMove <- strings.Split(line, " ")[1]
-			case strings.HasPrefix(line, "id name lczero "):
-				c.Version = strings.Split(line, " ")[3]
+			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
+				c.Version = strings.Split(line, " ")[6]
 			case strings.HasPrefix(line, "info"):
 				break
 				fallthrough
@@ -387,7 +388,6 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
 	c := createCmdWrapper()
-	c.Version = "v0.10"
 	c.launch(networkPath, params /* input= */, false)
 	trainDir := ""
 	defer func() {
