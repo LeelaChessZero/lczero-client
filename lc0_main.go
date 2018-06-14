@@ -548,7 +548,23 @@ func nextGame(httpClient *http.Client, count int) error {
 	return errors.New("Unknown game type: " + nextGame.Type)
 }
 
+// Check if PGN may contain "e.p." to verify that the chess package is recent
+func testEP() {
+	game := chess.NewGame(chess.UseNotation(chess.AlgebraicNotation{}))
+	game.MoveStr("a4")
+	game.MoveStr("c5")
+	game.MoveStr("a5")
+	game.MoveStr("b5")
+	game.MoveStr("axb6")
+
+	if strings.Contains(game.String(),"e.p.") {
+		log.Fatal("You need a more recent version of package github.com/Tilps/chess")
+	}
+}
+
 func main() {
+	testEP()
+
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
