@@ -536,7 +536,7 @@ func nextGame(httpClient *http.Client, count int) error {
 				errCount = 0
 			}
 		}()
-		err := train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
+		err = train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
 		// Ensure the anonymous function stops retrying.
 		nextGame.Type = "Done"
 		if err != nil {
