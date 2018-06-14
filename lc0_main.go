@@ -371,7 +371,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 }
 
 func train(httpClient *http.Client, ngr client.NextGameResponse,
-	networkPath string, count int, params []string, doneCh chan bool) {
+	networkPath string, count int, params []string, doneCh chan bool) error {
 	// pid is intended for use in multi-threaded training
 	pid := os.Getpid()
 
@@ -402,10 +402,12 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	}()
 	wg := &sync.WaitGroup{}
 	numGames := 1
+	progressOrKill := false
 	for done := false; !done; {
 		select {
 		case <-doneCh:
 			done = true
+			progressOrKill = true
 			log.Println("Received message to end training, killing lc0")
 			c.Cmd.Process.Kill()
 		case _, ok := <-c.BestMove:
@@ -422,6 +424,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
+			progressOrKill = true
 			trainDir = path.Dir(gi.fname)
 			log.Printf("trainDir=%s", trainDir)
 			wg.Add(1)
@@ -441,6 +444,10 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 
 	log.Println("Waiting for uploads to complete")
 	wg.Wait()
+	if !progressOrKill {
+		return errors.New("Client self-exited without producing any games.")
+	}
+	return nil
 }
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
@@ -529,7 +536,12 @@ func nextGame(httpClient *http.Client, count int) error {
 				errCount = 0
 			}
 		}()
-		train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
+		err = train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
+		// Ensure the anonymous function stops retrying.
+		nextGame.Type = "Done"
+		if err != nil {
+			return nil
+		}
 		return nil
 	}
 
