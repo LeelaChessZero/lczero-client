@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -198,12 +199,24 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
 	if *lc0Args != "" {
-		// TODO: We might want to inspect these to prevent someone
+		// Strict checking of the --lc0args options to prevent someone
 		// from passing a different visits or batch size for example.
-		// Possibly just exposts exact args we want to passthrough like
-		// backend.  For testing right now this is probably useful to not
-		// need to rebuild the client to change lc0 args.
 		parts := strings.Split(*lc0Args, " ")
+		for _, opt := range parts {
+			words := regexp.MustCompile("[,=().0-9]").Split(opt, -1)
+			for _, word := range words {
+				optOK := false
+				switch word {
+					case "", "--backend", "tf", "cudnn", "opencl", "blas",
+						"--backend-opts", "gpu", "verbose", "true", "false":
+					optOK = true
+				}
+				if !optOK {
+					log.Fatalf("Not accepted --lc0args option: %s", opt)
+				}
+			}
+		}
+
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
 	if !*debug {
