@@ -35,7 +35,7 @@ var (
 	hostname = flag.String("hostname", "http://testserver.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
-	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
+//	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
 	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", `Extra args to pass to the backend.  example: --lc0args="--parallelism=10 --threads=2"`)
 )
