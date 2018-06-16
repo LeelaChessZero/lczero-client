@@ -320,7 +320,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 		p2, p1 = p1, p2
 	}
 
-	log.Println("writign uci")
+	log.Println("writing uci")
 	io.WriteString(baseline.Input, "uci\n")
 	io.WriteString(candidate.Input, "uci\n")
 
