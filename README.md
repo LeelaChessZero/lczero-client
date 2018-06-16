@@ -16,7 +16,11 @@ go get -u github.com/Tilps/chess
 
 ```
 
-Then you just need to `go build`, and it should produce a `lczero-client` executable.
+Pull or download the `master` branch
+
+Then to produce a `lczero-client` executable:
+`go build main.go` for the `main` client
+`go build lc0_main.go` for the `lc0` client
 
 # Running
 
