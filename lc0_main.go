@@ -100,6 +100,7 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 	var retryCount uint32
 
 	for {
+		retryCount++
 		if retryCount > 3 {
 			return errors.New("UploadGame failed: Too many retries")
 		}
@@ -128,9 +129,6 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 			continue
 		}
 		resp.Body.Close()
-//		fmt.Println(resp.StatusCode)
-//		fmt.Println(resp.Header)
-//		fmt.Println(body)
 		break
 	}
 
