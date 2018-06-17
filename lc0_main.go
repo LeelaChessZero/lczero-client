@@ -244,19 +244,16 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
 			case strings.HasPrefix(line, "gameready"):
-				parts := strings.Split(line, " ")
-				if parts[1] != "trainingfile" ||
-					parts[3] != "gameid" ||
-					parts[5] != "player1" ||
-					parts[7] != "result" ||
-					parts[9] != "moves" {
+				// filename is between "trainingfile" and "gameid"
+				idx1 := strings.Index(line, "trainingfile")
+				idx2 := strings.LastIndex(line, "gameid")
+				idx3 := strings.LastIndex(line, "moves")
+				if idx1 < 0 || idx2 < 0 || idx3 < 0 {
 					log.Printf("Malformed gameready: %q", line)
 					break
 				}
-				file := parts[2]
-				//gameid := parts[4]
-				//result := parts[8]
-				pgn := convertMovesToPGN(parts[10:])
+				file := line[idx1+13:idx2-1]
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)]," "))
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file}
 			case strings.HasPrefix(line, "bestmove "):
