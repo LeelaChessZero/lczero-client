@@ -228,10 +228,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		log.Fatal(err)
 	}
 
-	stderr, err := c.Cmd.StderrPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
+	c.Cmd.Stderr = os.Stdout
 
 	go func() {
 		defer close(c.BestMove)
@@ -266,13 +263,6 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			default:
 				fmt.Println(line)
 			}
-		}
-	}()
-
-	go func() {
-		stderrScanner := bufio.NewScanner(stderr)
-		for stderrScanner.Scan() {
-			fmt.Printf("%s\n", stderrScanner.Text())
 		}
 	}()
 
