@@ -549,7 +549,7 @@ func nextGame(httpClient *http.Client, count int) error {
 		// Ensure the anonymous function stops retrying.
 		nextGame.Type = "Done"
 		if err != nil {
-			return nil
+			return err
 		}
 		return nil
 	}
