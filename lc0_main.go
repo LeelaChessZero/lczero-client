@@ -149,6 +149,8 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 type gameInfo struct {
 	pgn   string
 	fname string
+	// If >= 0, this is the value which if resign threshold was set 
+	// higher a false positive would have occurred.
 	fp_threshold float64
 }
 
@@ -237,6 +239,10 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		log.Fatal(err)
 	}
 
+	// If the game wasn't played with resign, and the engine supports it,
+	// this will be populated by the resign_report before the gameready
+	// with the value which the resign threshold should be kept below to
+	// avoid a false positive.
 	last_fp_threshold := -1.0
 	go func() {
 		defer close(c.BestMove)
