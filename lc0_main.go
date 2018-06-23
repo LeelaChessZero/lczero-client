@@ -95,7 +95,7 @@ func getExtraParams() map[string]string {
 }
 
 func uploadGame(httpClient *http.Client, path string, pgn string,
-	nextGame client.NextGameResponse, version string) error {
+	nextGame client.NextGameResponse, version string, fp_threshold float64) error {
 
 	var retryCount uint32
 
@@ -110,6 +110,9 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 		extraParams["network_id"] = strconv.Itoa(int(nextGame.NetworkId))
 		extraParams["pgn"] = pgn
 		extraParams["engineVersion"] = version
+		if fp_threshold >= 0.0 {
+			extraParams["fp_threshold"] = strconv.FormatFloat(fp_threshold, 'E', -1, 64)
+		}
 		request, err := client.BuildUploadRequest(*hostname+"/upload_game", extraParams, "file", path)
 		if err != nil {
 			log.Printf("BUR: %v", err)
@@ -146,6 +149,7 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 type gameInfo struct {
 	pgn   string
 	fname string
+	fp_threshold float64
 }
 
 type cmdWrapper struct {
@@ -233,6 +237,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		log.Fatal(err)
 	}
 
+	last_fp_threshold := -1.0
 	go func() {
 		defer close(c.BestMove)
 		defer close(c.gi)
@@ -241,7 +246,23 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			line := stdoutScanner.Text()
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
-			case strings.HasPrefix(line, "gameready"):
+			case strings.HasPrefix(line, "resign_report "):
+				args := strings.Split(line, " ")
+				fp_threshold_idx := -1
+				for idx, arg := range args {
+					if arg == "fp_threshold" {
+						fp_threshold_idx = idx+1
+					}
+				}
+				if fp_threshold_idx >= 0 {
+					last_fp_threshold, err = strconv.ParseFloat(args[fp_threshold_idx], 64)
+					if err != nil {
+						log.Printf("Malformed resign_report: %q", line)
+						last_fp_threshold = -1.0
+					}
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "gameready "):
 				// filename is between "trainingfile" and "gameid"
 				idx1 := strings.Index(line, "trainingfile")
 				idx2 := strings.LastIndex(line, "gameid")
@@ -253,7 +274,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 				file := line[idx1+13:idx2-1]
 				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)]," "))
 				fmt.Printf("PGN: %s\n", pgn)
-				c.gi <- gameInfo{pgn: pgn, fname: file}
+				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold}
+				last_fp_threshold = -1.0
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
 				c.BestMove <- strings.Split(line, " ")[1]
@@ -438,7 +460,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			log.Printf("trainDir=%s", trainDir)
 			wg.Add(1)
 			go func() {
-				uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version)
+				uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version, gi.fp_threshold)
 				wg.Done()
 			}()
 		}
