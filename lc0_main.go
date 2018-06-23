@@ -150,7 +150,8 @@ type gameInfo struct {
 	pgn   string
 	fname string
 	// If >= 0, this is the value which if resign threshold was set 
-	// higher a false positive would have occurred.
+	// higher a false positive would have occurred if the game had been
+	// played with resign.
 	fp_threshold float64
 }
 
