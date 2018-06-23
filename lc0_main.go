@@ -90,7 +90,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "13",
+		"version":  "14",
 	}
 }
 
