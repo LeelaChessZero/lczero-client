@@ -204,8 +204,9 @@ func createCmdWrapper() *cmdWrapper {
 func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
-	c.Cmd.Args = append(c.Cmd.Args, args...)
-	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
+	// Add the "selfplay" or "uci" part first
+	c.Cmd.Args = append(c.Cmd.Args, args[0])
+	args = args[1:]
 	if *lc0Args != "" {
 		log.Println("WARNING: Option --lc0args is for testing, not production use!")
 		log.SetPrefix("TESTING: ")
@@ -223,6 +224,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
 	}
+	c.Cmd.Args = append(c.Cmd.Args, args...)
+	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
 	if !*debug {
 		//		c.Cmd.Args = append(c.Cmd.Args, "--quiet")
 		fmt.Println("lc0 is never quiet.")
