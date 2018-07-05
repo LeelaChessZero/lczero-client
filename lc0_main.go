@@ -567,11 +567,12 @@ func nextGame(httpClient *http.Client, count int) error {
 					if errCount < 10 {
 						continue
 					}
+					doneCh <- true
+					close(doneCh)
+					return
 				}
-				if err != nil || ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
-					if err == nil {
-						pendingNextGame = &ng
-					}
+				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					pendingNextGame = &ng
 					doneCh <- true
 					close(doneCh)
 					return
