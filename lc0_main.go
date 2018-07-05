@@ -213,8 +213,9 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			for _, word := range words {
 				optOK := false
 				switch word {
-					case "", "--backend", "tf", "cudnn", "opencl", "blas",
-						"--backend-opts", "gpu", "verbose", "true", "false":
+					case "", "--backend", "tf", "cudnn", "opencl", "blas", "cudnn-fp",
+						"multiplexing", "--backend-opts", "backend", "gpu", "verbose",
+						"true", "false", "--parallelism":
 					optOK = true
 				}
 				if !optOK {
