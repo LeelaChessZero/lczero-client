@@ -38,8 +38,9 @@ var (
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
 	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
-	lc0Args  = flag.String("lc0args", "",
-					`Extra args to pass to the backend. Example: --lc0args=--backend-opts=cudnn(gpu=1)`)
+	lc0Args  = flag.String("lc0args", "", "")
+	backopts = flag.String("backend-opts", "",
+		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 )
 
 // Settings holds username and password.
@@ -206,26 +207,19 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
 	if *lc0Args != "" {
-		// Strict checking of the --lc0args options to prevent someone
-		// from passing a different visits or batch size for example.
 		parts := strings.Split(*lc0Args, " ")
-		for _, opt := range parts {
-			words := regexp.MustCompile("[,=().0-9]").Split(opt, -1)
-			for _, word := range words {
-				optOK := false
-				switch word {
-					case "", "--backend", "tf", "cudnn", "opencl", "blas", "cudnn-fp",
-						"multiplexing", "--backend-opts", "backend", "gpu", "verbose",
-						"true", "false", "--parallelism":
-					optOK = true
-				}
-				if !optOK {
-					log.Fatalf("Not accepted --lc0args option: %s", opt)
-				}
+		c.Cmd.Args = append(c.Cmd.Args, parts...)
+	}
+	if *backopts != "" {
+		// Check agains small token blacklist, currently only "random"
+		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
+		for _, token := range tokens {
+			switch token {
+				case "random":
+				log.Fatalf("Not accepted in --backend-opts: %s", token)
 			}
 		}
-
-		c.Cmd.Args = append(c.Cmd.Args, parts...)
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
 	}
 	if !*debug {
 		//		c.Cmd.Args = append(c.Cmd.Args, "--quiet")
