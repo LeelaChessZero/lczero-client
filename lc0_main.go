@@ -41,6 +41,7 @@ var (
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
+	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 )
 
 // Settings holds username and password.
@@ -205,7 +206,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
 	// Add the "selfplay" or "uci" part first
-	c.Cmd.Args = append(c.Cmd.Args, args[0])
+	mode := args[0]
+	c.Cmd.Args = append(c.Cmd.Args, mode)
 	args = args[1:]
 	if *lc0Args != "" {
 		log.Println("WARNING: Option --lc0args is for testing, not production use!")
@@ -223,6 +225,9 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			}
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
+	}
+	if *parallel != -1 && mode == "selfplay" {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", *parallel))
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
