@@ -207,6 +207,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
 	if *lc0Args != "" {
+		log.Println("WARNING: Option --lc0args is for testing, not production use!")
+		log.SetPrefix("TESTING: ")
 		parts := strings.Split(*lc0Args, " ")
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
