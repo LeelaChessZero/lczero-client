@@ -608,9 +608,23 @@ func testEP() {
 	}
 }
 
+func hideLc0argsFlag() {
+	shown := new(flag.FlagSet)
+	flag.VisitAll(func(f *flag.Flag) {
+		if (f.Name != "lc0args") {
+			shown.Var(f.Value, f.Name, f.Usage)
+		}
+	})
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		shown.PrintDefaults()
+	}
+}
+
 func main() {
 	testEP()
 
+	hideLc0argsFlag()
 	flag.Parse()
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
