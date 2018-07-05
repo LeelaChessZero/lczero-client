@@ -31,6 +31,7 @@ import (
 var (
 	startTime  time.Time
 	totalGames int
+	pendingNextGame *client.NextGameResponse
 
 	hostname = flag.String("hostname", "http://testserver.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -504,9 +505,17 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 }
 
 func nextGame(httpClient *http.Client, count int) error {
-	nextGame, err := client.NextGame(httpClient, *hostname, getExtraParams())
-	if err != nil {
-		return err
+	var nextGame client.NextGameResponse
+	var err error
+	if pendingNextGame != nil {
+		nextGame = *pendingNextGame
+		pendingNextGame = nil
+		err = nil
+	} else {
+		nextGame, err = client.NextGame(httpClient, *hostname, getExtraParams())
+		if err != nil {
+			return err
+		}
 	}
 	var serverParams []string
 	err = json.Unmarshal([]byte(nextGame.Params), &serverParams)
@@ -548,6 +557,9 @@ func nextGame(httpClient *http.Client, count int) error {
 			errCount := 0
 			for {
 				time.Sleep(60 * time.Second)
+				if nextGame.Type == "Done" {
+					return
+				}
 				ng, err := client.NextGame(httpClient, *hostname, getExtraParams())
 				if err != nil {
 					fmt.Printf("Error talking to server: %v\n", err)
@@ -557,6 +569,9 @@ func nextGame(httpClient *http.Client, count int) error {
 					}
 				}
 				if err != nil || ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					if err == nil {
+						pendingNextGame = &ng
+					}
 					doneCh <- true
 					close(doneCh)
 					return
