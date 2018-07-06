@@ -38,7 +38,8 @@ var (
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
 	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
-	lc0Args  = flag.String("lc0args", "", `Extra args to pass to the backend. Example: --lc0args=--backend=cudnn`)
+	lc0Args  = flag.String("lc0args", "",
+					`Extra args to pass to the backend. Example: --lc0args=--backend-opts=cudnn(gpu=1)`)
 )
 
 // Settings holds username and password.
@@ -213,8 +214,9 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			for _, word := range words {
 				optOK := false
 				switch word {
-					case "", "--backend", "tf", "cudnn", "opencl", "blas",
-						"--backend-opts", "gpu", "verbose", "true", "false":
+					case "", "--backend", "tf", "cudnn", "opencl", "blas", "cudnn-fp",
+						"multiplexing", "--backend-opts", "backend", "gpu", "verbose",
+						"true", "false", "--parallelism":
 					optOK = true
 				}
 				if !optOK {
