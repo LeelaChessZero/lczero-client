@@ -11,15 +11,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"client"
@@ -30,13 +31,15 @@ import (
 var (
 	startTime  time.Time
 	totalGames int
+	pendingNextGame *client.NextGameResponse
 
 	hostname = flag.String("hostname", "http://testserver.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
-	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
+//	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
 	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
-	lc0Args  = flag.String("lc0args", "", `Extra args to pass to the backend.  example: --lc0args="--parallelism=10 --threads=2"`)
+	lc0Args  = flag.String("lc0args", "",
+					`Extra args to pass to the backend. Example: --lc0args=--backend-opts=cudnn(gpu=1)`)
 )
 
 // Settings holds username and password.
@@ -89,60 +92,57 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "10",
+		"version":  "15",
 	}
 }
 
 func uploadGame(httpClient *http.Client, path string, pgn string,
-	nextGame client.NextGameResponse, version string, retryCount uint) error {
+	nextGame client.NextGameResponse, version string, fp_threshold float64) error {
 
-	elapsed := time.Since(startTime)
+	var retryCount uint32
+
+	for {
+		retryCount++
+		if retryCount > 3 {
+			return errors.New("UploadGame failed: Too many retries")
+		}
+
+		extraParams := getExtraParams()
+		extraParams["training_id"] = strconv.Itoa(int(nextGame.TrainingId))
+		extraParams["network_id"] = strconv.Itoa(int(nextGame.NetworkId))
+		extraParams["pgn"] = pgn
+		extraParams["engineVersion"] = version
+		if fp_threshold >= 0.0 {
+			extraParams["fp_threshold"] = strconv.FormatFloat(fp_threshold, 'E', -1, 64)
+		}
+		request, err := client.BuildUploadRequest(*hostname+"/upload_game", extraParams, "file", path)
+		if err != nil {
+			log.Printf("BUR: %v", err)
+			return err
+		}
+		resp, err := httpClient.Do(request)
+		if err != nil {
+			log.Printf("http.Do: %v", err)
+			return err
+		}
+		body := &bytes.Buffer{}
+		_, err = body.ReadFrom(resp.Body)
+		if err != nil {
+			log.Print(err)
+			log.Print("Error uploading, retrying...")
+			time.Sleep(time.Second * (2 << retryCount))
+			continue
+		}
+		resp.Body.Close()
+		break
+	}
+
 	totalGames++
-	log.Printf("Completed %d games in %s time", totalGames, elapsed)
+	log.Printf("Completed %d games in %s time", totalGames, time.Since(startTime))
 
-	extraParams := getExtraParams()
-	extraParams["training_id"] = strconv.Itoa(int(nextGame.TrainingId))
-	extraParams["network_id"] = strconv.Itoa(int(nextGame.NetworkId))
-	extraParams["pgn"] = pgn
-	extraParams["engineVersion"] = version
-	request, err := client.BuildUploadRequest(*hostname+"/upload_game", extraParams, "file", path)
+	err := os.Remove(path)
 	if err != nil {
-		log.Printf("BUR: %v", err)
-		return err
-	}
-	resp, err := httpClient.Do(request)
-	if err != nil {
-		log.Printf("http.Do: %v", err)
-		return err
-	}
-	body := &bytes.Buffer{}
-	_, err = body.ReadFrom(resp.Body)
-	if err != nil {
-		log.Print(err)
-		log.Print("Error uploading, retrying...")
-		time.Sleep(time.Second * (2 << retryCount))
-		err = uploadGame(httpClient, path, pgn, nextGame, version, retryCount+1)
-		return err
-	}
-	resp.Body.Close()
-	fmt.Println(resp.StatusCode)
-	fmt.Println(resp.Header)
-	fmt.Println(body)
-
-	trainDir := filepath.Dir(path)
-	if _, err := os.Stat(trainDir); err == nil {
-		files, err := ioutil.ReadDir(trainDir)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("Cleanup training files:\n")
-		for _, f := range files {
-			fmt.Printf("%s/%s\n", trainDir, f.Name())
-		}
-		err = os.RemoveAll(trainDir)
-		if err != nil {
-			log.Fatal(err)
-		}
+		log.Printf("Failed to remove training file: %v", err)
 	}
 
 	return nil
@@ -151,6 +151,10 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 type gameInfo struct {
 	pgn   string
 	fname string
+	// If >= 0, this is the value which if resign threshold was set 
+	// higher a false positive would have occurred if the game had been
+	// played with resign.
+	fp_threshold float64
 }
 
 type cmdWrapper struct {
@@ -191,6 +195,7 @@ func createCmdWrapper() *cmdWrapper {
 	c := &cmdWrapper{
 		gi:       make(chan gameInfo),
 		BestMove: make(chan string),
+		Version: "v0.10.0",
 	}
 	return c
 }
@@ -201,12 +206,25 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
 	if *lc0Args != "" {
-		// TODO: We might want to inspect these to prevent someone
+		// Strict checking of the --lc0args options to prevent someone
 		// from passing a different visits or batch size for example.
-		// Possibly just exposts exact args we want to passthrough like
-		// backend.  For testing right now this is probably useful to not
-		// need to rebuild the client to change lc0 args.
 		parts := strings.Split(*lc0Args, " ")
+		for _, opt := range parts {
+			words := regexp.MustCompile("[,=().0-9]").Split(opt, -1)
+			for _, word := range words {
+				optOK := false
+				switch word {
+					case "", "--backend", "tf", "cudnn", "opencl", "blas", "cudnn-fp",
+						"multiplexing", "--backend-opts", "backend", "gpu", "verbose",
+						"true", "false", "--parallelism":
+					optOK = true
+				}
+				if !optOK {
+					log.Fatalf("Not accepted --lc0args option: %s", opt)
+				}
+			}
+		}
+
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
 	if !*debug {
@@ -220,11 +238,13 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		log.Fatal(err)
 	}
 
-	stderr, err := c.Cmd.StderrPipe()
-	if err != nil {
-		log.Fatal(err)
-	}
+	c.Cmd.Stderr = os.Stdout
 
+	// If the game wasn't played with resign, and the engine supports it,
+	// this will be populated by the resign_report before the gameready
+	// with the value which the resign threshold should be kept below to
+	// avoid a false positive.
+	last_fp_threshold := -1.0
 	go func() {
 		defer close(c.BestMove)
 		defer close(c.gi)
@@ -233,40 +253,48 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			line := stdoutScanner.Text()
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
-			case strings.HasPrefix(line, "gameready"):
-				parts := strings.Split(line, " ")
-				if parts[1] != "trainingfile" ||
-					parts[3] != "gameid" ||
-					parts[5] != "player1" ||
-					parts[7] != "result" ||
-					parts[9] != "moves" {
+			case strings.HasPrefix(line, "resign_report "):
+				args := strings.Split(line, " ")
+				fp_threshold_idx := -1
+				for idx, arg := range args {
+					if arg == "fp_threshold" {
+						fp_threshold_idx = idx+1
+					}
+				}
+				if fp_threshold_idx >= 0 {
+					last_fp_threshold, err = strconv.ParseFloat(args[fp_threshold_idx], 64)
+					if err != nil {
+						log.Printf("Malformed resign_report: %q", line)
+						last_fp_threshold = -1.0
+					}
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "gameready "):
+				// filename is between "trainingfile" and "gameid"
+				idx1 := strings.Index(line, "trainingfile")
+				idx2 := strings.LastIndex(line, "gameid")
+				idx3 := strings.LastIndex(line, "moves")
+				if idx1 < 0 || idx2 < 0 || idx3 < 0 {
 					log.Printf("Malformed gameready: %q", line)
 					break
 				}
-				file := parts[2]
-				//gameid := parts[4]
-				//result := parts[8]
-				pgn := convertMovesToPGN(parts[10:])
+				file := line[idx1+13:idx2-1]
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)]," "))
 				fmt.Printf("PGN: %s\n", pgn)
-				c.gi <- gameInfo{pgn: pgn, fname: file}
+				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold}
+				last_fp_threshold = -1.0
 			case strings.HasPrefix(line, "bestmove "):
-				fmt.Println(line)
+				//				fmt.Println(line)
 				c.BestMove <- strings.Split(line, " ")[1]
-			case strings.HasPrefix(line, "id name lczero "):
-				c.Version = strings.Split(line, " ")[3]
+			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
+				c.Version = strings.Split(line, " ")[6]
+				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				break
 				fallthrough
 			default:
 				fmt.Println(line)
 			}
-		}
-	}()
-
-	go func() {
-		stderrScanner := bufio.NewScanner(stderr)
-		for stderrScanner.Scan() {
-			fmt.Printf("%s\n", stderrScanner.Text())
 		}
 	}()
 
@@ -286,11 +314,21 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 	log.Println("launching 1")
 	baseline.launch(baselinePath, params, true)
 	defer baseline.Input.Close()
+	defer func() {
+		log.Println("Waiting for baseline to exit.")
+		baseline.Cmd.Process.Kill()
+		baseline.Cmd.Wait()
+	}()
 
 	candidate := createCmdWrapper()
 	log.Println("launching 2")
 	candidate.launch(candidatePath, params, true)
 	defer candidate.Input.Close()
+	defer func() {
+		log.Println("Waiting for candidate to exit.")
+		candidate.Cmd.Process.Kill()
+		candidate.Cmd.Wait()
+	}()
 
 	p1 := candidate
 	p2 := baseline
@@ -299,7 +337,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 		p2, p1 = p1, p2
 	}
 
-	log.Println("writign uci")
+	log.Println("writing uci")
 	io.WriteString(baseline.Input, "uci\n")
 	io.WriteString(candidate.Input, "uci\n")
 
@@ -335,7 +373,6 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 		}
 		io.WriteString(p.Input, "position startpos"+moveHistory+"\n")
 		io.WriteString(p.Input, "go nodes 800\n")
-		log.Println("sent go")
 
 		select {
 		case bestMove, ok := <-p.BestMove:
@@ -366,7 +403,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 }
 
 func train(httpClient *http.Client, ngr client.NextGameResponse,
-	networkPath string, count int, params []string, doneCh chan bool) {
+	networkPath string, count int, params []string, doneCh chan bool) error {
 	// pid is intended for use in multi-threaded training
 	pid := os.Getpid()
 
@@ -382,13 +419,26 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
 	c := createCmdWrapper()
-	c.Version = "v0.10"
 	c.launch(networkPath, params /* input= */, false)
+	trainDir := ""
+	defer func() {
+		// Remove the training dir when we're done training.
+		if trainDir != "" {
+			log.Printf("Removing traindir: %s", trainDir)
+			err := os.RemoveAll(trainDir)
+			if err != nil {
+				log.Printf("Error removing train dir: %v", err)
+			}
+		}
+	}()
+	wg := &sync.WaitGroup{}
+	numGames := 1
+	progressOrKill := false
 	for done := false; !done; {
-		numGames := 1
 		select {
 		case <-doneCh:
 			done = true
+			progressOrKill = true
 			log.Println("Received message to end training, killing lc0")
 			c.Cmd.Process.Kill()
 		case _, ok := <-c.BestMove:
@@ -405,16 +455,30 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
-			go uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version, 0)
+			progressOrKill = true
+			trainDir = path.Dir(gi.fname)
+			log.Printf("trainDir=%s", trainDir)
+			wg.Add(1)
+			go func() {
+				uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version, gi.fp_threshold)
+				wg.Done()
+			}()
 		}
 	}
 
 	log.Println("Waiting for lc0 to stop")
 	err := c.Cmd.Wait()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("lc0 exited with: %v", err)
 	}
 	log.Println("lc0 stopped")
+
+	log.Println("Waiting for uploads to complete")
+	wg.Wait()
+	if !progressOrKill {
+		return errors.New("Client self-exited without producing any games.")
+	}
+	return nil
 }
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
@@ -442,21 +506,18 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	return path, nil
 }
 
-func validateParams(args []string) []string {
-	validArgs := []string{}
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "--tempdecay") {
-			continue
-		}
-		validArgs = append(validArgs, arg)
-	}
-	return validArgs
-}
-
 func nextGame(httpClient *http.Client, count int) error {
-	nextGame, err := client.NextGame(httpClient, *hostname, getExtraParams())
-	if err != nil {
-		return err
+	var nextGame client.NextGameResponse
+	var err error
+	if pendingNextGame != nil {
+		nextGame = *pendingNextGame
+		pendingNextGame = nil
+		err = nil
+	} else {
+		nextGame, err = client.NextGame(httpClient, *hostname, getExtraParams())
+		if err != nil {
+			return err
+		}
 	}
 	var serverParams []string
 	err = json.Unmarshal([]byte(nextGame.Params), &serverParams)
@@ -464,7 +525,6 @@ func nextGame(httpClient *http.Client, count int) error {
 		return err
 	}
 	log.Printf("serverParams: %s", serverParams)
-	serverParams = validateParams(serverParams)
 
 	if nextGame.Type == "match" {
 		log.Println("Starting match")
@@ -499,6 +559,9 @@ func nextGame(httpClient *http.Client, count int) error {
 			errCount := 0
 			for {
 				time.Sleep(60 * time.Second)
+				if nextGame.Type == "Done" {
+					return
+				}
 				ng, err := client.NextGame(httpClient, *hostname, getExtraParams())
 				if err != nil {
 					fmt.Printf("Error talking to server: %v\n", err)
@@ -506,8 +569,12 @@ func nextGame(httpClient *http.Client, count int) error {
 					if errCount < 10 {
 						continue
 					}
+					doneCh <- true
+					close(doneCh)
+					return
 				}
-				if err != nil || ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					pendingNextGame = &ng
 					doneCh <- true
 					close(doneCh)
 					return
@@ -515,17 +582,38 @@ func nextGame(httpClient *http.Client, count int) error {
 				errCount = 0
 			}
 		}()
-		train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
-		//train(httpClient, nextGame, networkPath, count, []string{"--visits=800"}, doneCh)
+		err = train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
+		// Ensure the anonymous function stops retrying.
+		nextGame.Type = "Done"
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 
 	return errors.New("Unknown game type: " + nextGame.Type)
 }
 
+// Check if PGN may contain "e.p." to verify that the chess package is recent
+func testEP() {
+	game := chess.NewGame(chess.UseNotation(chess.AlgebraicNotation{}))
+	game.MoveStr("a4")
+	game.MoveStr("c5")
+	game.MoveStr("a5")
+	game.MoveStr("b5")
+	game.MoveStr("axb6")
+
+	if strings.Contains(game.String(),"e.p.") {
+		log.Fatal("You need a more recent version of package github.com/Tilps/chess")
+	}
+}
+
 func main() {
+	testEP()
+
 	flag.Parse()
 
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if len(*user) == 0 || len(*password) == 0 {
 		*user, *password = readSettings("settings.json")
 	}
