@@ -226,7 +226,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
 	}
-	if *parallel != -1 && mode == "selfplay" {
+	if *parallel > 0 && mode == "selfplay" {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", *parallel))
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
