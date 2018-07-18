@@ -33,7 +33,7 @@ var (
 	totalGames int
 	pendingNextGame *client.NextGameResponse
 
-	hostname = flag.String("hostname", "http://162.217.248.187", "Address of the server")
+	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
