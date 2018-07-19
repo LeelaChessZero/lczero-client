@@ -210,7 +210,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	c.Cmd.Args = append(c.Cmd.Args, mode)
 	args = args[1:]
 	if mode != "selfplay" {
-		c.Cmd.args = append(c.Cmd.Args, "--backend=multiplexing")
+		c.Cmd.Args = append(c.Cmd.Args, "--backend=multiplexing")
 	}
 	if *lc0Args != "" {
 		log.Println("WARNING: Option --lc0args is for testing, not production use!")
