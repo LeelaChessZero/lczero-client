@@ -507,6 +507,8 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	// Otherwise, let's download it
 	err := client.DownloadNetwork(httpClient, *hostname, path, sha)
 	if err != nil {
+		// Ensure there is no remnant after a failed download.
+		os.Remove(path)
 		log.Printf("Network download failed: %v", err)
 		return "", err
 	}
