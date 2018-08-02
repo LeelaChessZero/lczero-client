@@ -1,9 +1,9 @@
 version: "{build}"
 platform: x64
-clone_folder: c:\gopath\src\github.com\borg323\lczero-client
+clone_folder: c:\gopath\src\github.com\LeelaChessZero\lczero-client
 
 environment:
-  GOPATH: c:\gopath;c:\gopath\src\github.com\borg323\lczero-client\
+  GOPATH: c:\gopath;c:\gopath\src\github.com\LeelaChessZero\lczero-client\
   matrix:
   - NAME: .exe
     GOOS: windows
