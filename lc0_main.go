@@ -33,7 +33,7 @@ var (
 	totalGames int
 	pendingNextGame *client.NextGameResponse
 
-	hostname = flag.String("hostname", "http://testserver.lczero.org", "Address of the server")
+	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
@@ -42,6 +42,7 @@ var (
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
+	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 )
 
 // Settings holds username and password.
@@ -635,6 +636,10 @@ func main() {
 
 	hideLc0argsFlag()
 	flag.Parse()
+
+	if *useTestServer {
+		*hostname = "http://testserver.lczero.org"
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if len(*user) == 0 || len(*password) == 0 {
