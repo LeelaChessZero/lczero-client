@@ -33,13 +33,16 @@ var (
 	totalGames int
 	pendingNextGame *client.NextGameResponse
 
-	hostname = flag.String("hostname", "http://testserver.lczero.org", "Address of the server")
+	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
 	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
-	lc0Args  = flag.String("lc0args", "",
-					`Extra args to pass to the backend. Example: --lc0args=--backend-opts=cudnn(gpu=1)`)
+	lc0Args  = flag.String("lc0args", "", "")
+	backopts = flag.String("backend-opts", "",
+		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
+	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
+	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 )
 
 // Settings holds username and password.
@@ -92,7 +95,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "15",
+		"version":  "16",
 	}
 }
 
@@ -203,30 +206,35 @@ func createCmdWrapper() *cmdWrapper {
 func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
-	c.Cmd.Args = append(c.Cmd.Args, args...)
-	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
+	// Add the "selfplay" or "uci" part first
+	mode := args[0]
+	c.Cmd.Args = append(c.Cmd.Args, mode)
+	args = args[1:]
+	if mode != "selfplay" {
+		c.Cmd.Args = append(c.Cmd.Args, "--backend=multiplexing")
+	}
 	if *lc0Args != "" {
-		// Strict checking of the --lc0args options to prevent someone
-		// from passing a different visits or batch size for example.
+		log.Println("WARNING: Option --lc0args is for testing, not production use!")
+		log.SetPrefix("TESTING: ")
 		parts := strings.Split(*lc0Args, " ")
-		for _, opt := range parts {
-			words := regexp.MustCompile("[,=().0-9]").Split(opt, -1)
-			for _, word := range words {
-				optOK := false
-				switch word {
-					case "", "--backend", "tf", "cudnn", "opencl", "blas", "cudnn-fp",
-						"multiplexing", "--backend-opts", "backend", "gpu", "verbose",
-						"true", "false", "--parallelism":
-					optOK = true
-				}
-				if !optOK {
-					log.Fatalf("Not accepted --lc0args option: %s", opt)
-				}
-			}
-		}
-
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
+	if *backopts != "" {
+		// Check agains small token blacklist, currently only "random"
+		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
+		for _, token := range tokens {
+			switch token {
+				case "random":
+				log.Fatalf("Not accepted in --backend-opts: %s", token)
+			}
+		}
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
+	}
+	if *parallel > 0 && mode == "selfplay" {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", *parallel))
+	}
+	c.Cmd.Args = append(c.Cmd.Args, args...)
+	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
 	if !*debug {
 		//		c.Cmd.Args = append(c.Cmd.Args, "--quiet")
 		fmt.Println("lc0 is never quiet.")
@@ -500,6 +508,8 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	// Otherwise, let's download it
 	err := client.DownloadNetwork(httpClient, *hostname, path, sha)
 	if err != nil {
+		// Ensure there is no remnant after a failed download.
+		os.Remove(path)
 		log.Printf("Network download failed: %v", err)
 		return "", err
 	}
@@ -608,10 +618,28 @@ func testEP() {
 	}
 }
 
+func hideLc0argsFlag() {
+	shown := new(flag.FlagSet)
+	flag.VisitAll(func(f *flag.Flag) {
+		if (f.Name != "lc0args") {
+			shown.Var(f.Value, f.Name, f.Usage)
+		}
+	})
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		shown.PrintDefaults()
+	}
+}
+
 func main() {
 	testEP()
 
+	hideLc0argsFlag()
 	flag.Parse()
+
+	if *useTestServer {
+		*hostname = "http://testserver.lczero.org"
+	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if len(*user) == 0 || len(*password) == 0 {

@@ -1,0 +1,28 @@
+version: "{build}"
+platform: x64
+clone_folder: c:\gopath\src\github.com\LeelaChessZero\lczero-client
+
+environment:
+  GOPATH: c:\gopath;c:\gopath\src\github.com\LeelaChessZero\lczero-client\
+  matrix:
+  - NAME: .exe
+    GOOS: windows
+  - NAME: _linux
+    GOOS: linux
+  - NAME: _mac
+    GOOS: darwin
+install:
+  - go get -u github.com/Tilps/chess
+build_script:
+  - go build -o client%NAME% lc0_main.go
+artifacts:
+  - path: client$(NAME)
+    name: client
+deploy:
+  - provider: GitHub
+    artifact: client%NAME%
+    auth_token:
+      secure: USFAdwQKTXqOXQjCYQfzWvzRpUhvqJLBkN4hbOg+j876vDxGZHt9bMYayb5evePp
+    on:
+      appveyor_repo_tag: true
+
