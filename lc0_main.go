@@ -497,8 +497,10 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	if stat, err := os.Stat(path); err == nil {
 		if stat.Size() != 0 {
 			file, _ := os.Open(path)
-			reader, _ := gzip.NewReader(file)
-			_, err = ioutil.ReadAll(reader)
+			reader, err := gzip.NewReader(file)
+			if err == nil {
+				_, err = ioutil.ReadAll(reader)
+			}
 			file.Close()
 			if err != nil {
 				fmt.Printf("Deleting old network...\n")
