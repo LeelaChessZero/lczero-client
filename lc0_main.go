@@ -491,10 +491,11 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	return nil
 }
 
-func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
+func checkValidNetwork(sha string) (string, error) {
 	// Sha already exists?
 	path := filepath.Join("networks", sha)
-	if stat, err := os.Stat(path); err == nil {
+	stat, err := os.Stat(path)
+	if err == nil {
 		if stat.Size() != 0 {
 			file, _ := os.Open(path)
 			reader, err := gzip.NewReader(file)
@@ -505,28 +506,34 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 			if err != nil {
 				fmt.Printf("Deleting old network...\n")
 				os.Remove(path)
+				return "", err
 			} else {
 				return path, nil
 			}
 		}
 	}
+	return "", err
+}
 
+func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
+	
 	if clearOld {
 		// Clean out any old networks
 		os.RemoveAll("networks")
 	}
 	os.MkdirAll("networks", os.ModePerm)
 
-	fmt.Printf("Downloading network...\n")
-	// Otherwise, let's download it
-	err := client.DownloadNetwork(httpClient, *hostname, path, sha)
-	if err != nil {
-		// Ensure there is no remnant after a failed download.
-		os.Remove(path)
-		log.Printf("Network download failed: %v", err)
-		return "", err
+	for {
+		if path, err := checkValidNetwork(sha); err == nil {
+			// There is already a valid network
+			return path, nil
+		}
+		// Otherwise, let's download it
+		err := client.DownloadNetwork(httpClient, *hostname, path, sha)
+		if err != nil {
+			log.Printf("Network download failed: %v", err)
+		}
 	}
-	return path, nil
 }
 
 func nextGame(httpClient *http.Client, count int) error {

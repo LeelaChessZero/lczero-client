@@ -109,7 +109,7 @@ func DownloadNetwork(httpClient *http.Client, hostname string, networkPath strin
 		return err
 	}
 
-	out, err := ioutil.TempFile("", "lczero_tmp")
+	out, err := ioutil.TempFile("networks", sha + "_tmp")
 	if err != nil {
 		return err
 	}
