@@ -6,11 +6,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -494,7 +496,16 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	path := filepath.Join("networks", sha)
 	if stat, err := os.Stat(path); err == nil {
 		if stat.Size() != 0 {
-			return path, nil
+			file, _ := os.Open(path)
+			reader, _ := gzip.NewReader(file)
+			_, err = ioutil.ReadAll(reader)
+			file.Close()
+			if err != nil {
+				fmt.Printf("Deleting old network...\n")
+				os.Remove(path)
+			} else {
+				return path, nil
+			}
 		}
 	}
 
