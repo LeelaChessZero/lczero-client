@@ -549,7 +549,7 @@ func nextGame(httpClient *http.Client, count int) error {
 		log.Println("Starting match")
 		result, pgn, version, err := playMatch(networkPath, candidatePath, serverParams, nextGame.Flip)
 		if err != nil {
-			log.Fatalf("playMatch: %v", err)
+			log.Printf("playMatch: %v", err)
 			return err
 		}
 		extraParams := getExtraParams()
@@ -659,6 +659,8 @@ func main() {
 		err := nextGame(httpClient, i)
 		if err != nil {
 			log.Print(err)
+			log.Println("Remove networks folder")
+			os.RemoveAll("networks")
 			log.Print("Sleeping for 30 seconds...")
 			time.Sleep(30 * time.Second)
 			continue
