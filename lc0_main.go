@@ -28,6 +28,7 @@ import (
 	"client"
 
 	"github.com/Tilps/chess"
+	"github.com/nightlyone/lockfile"
 )
 
 var (
@@ -517,11 +518,11 @@ func checkValidNetwork(sha string) (string, error) {
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
 	
-	if clearOld {
-		// Clean out any old networks
-		os.RemoveAll("networks")
-	}
-	os.MkdirAll("networks", os.ModePerm)
+	// if clearOld {
+	// 	// Clean out any old networks
+	// 	os.RemoveAll("networks")
+	// }
+	// os.MkdirAll("networks", os.ModePerm)
 
 	for {
 		path, err := checkValidNetwork(sha)
@@ -529,11 +530,22 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 			// There is already a valid network
 			return path, nil
 		}
+
 		// Otherwise, let's download it
-		err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+		lock, err := lockfile.New(filepath.join("networks", sha + ".lck"))
 		if err != nil {
-			log.Printf("Network download failed: %v", err)
+			log.Printf("Cannot init lock: %v", err)
 		}
+		err = lock.TryLock()
+		if err != nill {
+			log.Printf("Cannot lock: %v", err)
+		} else {
+			err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+			if err != nil {
+				log.Printf("Network download failed: %v", err)
+			}
+		}
+		lock.Unlock()
 	}
 }
 
