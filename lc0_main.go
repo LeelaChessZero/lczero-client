@@ -532,7 +532,8 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 		}
 
 		// Otherwise, let's download it
-		lock, err := lockfile.New(filepath.Abs(filepath.Join("networks", sha + ".lck")))
+		lockfile, _ := filepath.Abs(filepath.Join("networks", sha + ".lck"))
+		lock, err := lockfile.New(lockfile)
 		if err != nil {
 			log.Printf("Cannot init lock: %v", err)
 		}
