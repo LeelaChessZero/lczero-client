@@ -13,6 +13,7 @@ Pre-reqs:
 # (Bug workaround, using Tilps instead)
 # go get -u github.com/notnil/chess
 go get -u github.com/Tilps/chess
+go get -u github.com/nightlyone/lockfile
 
 ```
 
