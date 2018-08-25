@@ -518,10 +518,13 @@ func checkValidNetwork(sha string) (string, error) {
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
 	
+	// TODO
+	// Commented out temporarily, this is never run on previous code
 	// if clearOld {
 	// 	// Clean out any old networks
 	// 	os.RemoveAll("networks")
 	// }
+	
 	os.MkdirAll("networks", os.ModePerm)
 
 	for {
