@@ -522,7 +522,7 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	// 	// Clean out any old networks
 	// 	os.RemoveAll("networks")
 	// }
-	// os.MkdirAll("networks", os.ModePerm)
+	os.MkdirAll("networks", os.ModePerm)
 
 	for {
 		path, err := checkValidNetwork(sha)
