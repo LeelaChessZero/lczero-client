@@ -524,12 +524,13 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	os.MkdirAll("networks", os.ModePerm)
 
 	for {
-		if path, err := checkValidNetwork(sha); err == nil {
+		path, err := checkValidNetwork(sha)
+		if err == nil {
 			// There is already a valid network
 			return path, nil
 		}
 		// Otherwise, let's download it
-		err := client.DownloadNetwork(httpClient, *hostname, path, sha)
+		err = client.DownloadNetwork(httpClient, *hostname, path, sha)
 		if err != nil {
 			log.Printf("Network download failed: %v", err)
 		}
