@@ -537,7 +537,7 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 			log.Printf("Cannot init lock: %v", err)
 		}
 		err = lock.TryLock()
-		if err != nill {
+		if err != nil {
 			log.Printf("Cannot lock: %v", err)
 		} else {
 			err = client.DownloadNetwork(httpClient, *hostname, path, sha)
