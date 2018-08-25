@@ -525,9 +525,10 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	os.MkdirAll("networks", os.ModePerm)
 
 	for {
+		// Loop until a valid network is found
 		path, err := checkValidNetwork(sha)
 		if err == nil {
-			// There is already a valid network
+			// There is already a valid network. Use it
 			return path, nil
 		}
 
@@ -535,18 +536,29 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 		lockpath, _ := filepath.Abs(filepath.Join("networks", sha + ".lck"))
 		lock, err := lockfile.New(lockpath)
 		if err != nil {
-			log.Printf("Cannot init lock: %v", err)
+			// Unknown error. Exit.
+			log.Fatalf("Cannot init lockfile: %v", err)
 		}
+		// Attempt to acquire lock
 		err = lock.TryLock()
 		if err != nil {
-			log.Printf("Cannot lock: %v", err)
+			// Cannot acquire lock
+			if err == lockfile.ErrBusy {
+				log.Println("Download initiated by other client. Sleeping for 5 seconds...")
+				time.Sleep(5 * time.Second)
+			} else {
+				// Unknown error
+				log.Fatalf("Cannot lock: %v", err)
+			}
 		} else {
+			// Lockfile acquired, download it
+			defer lock.Unlock()
+			fmt.Printf("Downloading network...\n")
 			err = client.DownloadNetwork(httpClient, *hostname, path, sha)
 			if err != nil {
 				log.Printf("Network download failed: %v", err)
 			}
 		}
-		lock.Unlock()
 	}
 }
 
