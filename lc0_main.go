@@ -506,13 +506,13 @@ func checkValidNetwork(sha string) (string, error) {
 			if err != nil {
 				fmt.Printf("Deleting old network...\n")
 				os.Remove(path)
-				return "", err
+				return path, err
 			} else {
 				return path, nil
 			}
 		}
 	}
-	return "", err
+	return path, err
 }
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
