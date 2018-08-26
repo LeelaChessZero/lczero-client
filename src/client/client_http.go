@@ -119,8 +119,8 @@ func DownloadNetwork(httpClient *http.Client, hostname string, networkPath strin
 	out.Close()
 	if err == nil {
 		err = os.Rename(out.Name(), networkPath)
-	} else {
-		os.Remove(out.Name())
 	}
+	// Ensure tmpfile is erased
+	os.Remove(out.Name())
 	return err
 }
