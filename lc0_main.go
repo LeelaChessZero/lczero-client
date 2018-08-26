@@ -516,14 +516,25 @@ func checkValidNetwork(sha string) (string, error) {
 	return path, err
 }
 
+func removeAllExcept(dir string, sha string) (error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if file.Name() == sha {
+			continue
+		}
+		fmt.Printf("Removing %v\n", file.Name())
+		err := os.RemoveAll(filepath.Join(dir, file.Name()))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
-	
-	// TODO
-	// Commented out temporarily, this is never run on previous code
-	// if clearOld {
-	// 	// Clean out any old networks
-	// 	os.RemoveAll("networks")
-	// }
 	
 	os.MkdirAll("networks", os.ModePerm)
 
@@ -531,7 +542,15 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 		// Loop until a valid network is found
 		path, err := checkValidNetwork(sha)
 		if err == nil {
-			// There is already a valid network. Use it
+			// There is already a valid network. Use it.
+
+			if clearOld {
+				err := removeAllExcept("networks", sha)
+				if err != nil {
+					log.Printf("Failed to remove old network(s): %v", err)
+				}
+			}
+
 			return path, nil
 		}
 
