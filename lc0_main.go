@@ -534,6 +534,24 @@ func removeAllExcept(dir string, sha string) (error) {
 	return nil
 }
 
+func acquireLock(sha string) (lockfile.Lockfile, error) {
+	lockpath, _ := filepath.Abs(filepath.Join("networks", sha + ".lck"))
+	lock, err := lockfile.New(lockpath)
+	if err != nil {
+		// Unknown error. Exit.
+		log.Fatalf("Cannot init lockfile: %v", err)
+	}
+	// Attempt to acquire lock
+	err = lock.TryLock()
+	if err != nil {
+		if err != lockfile.ErrBusy {
+			// Unknown error
+			log.Fatalf("Cannot lock: %v", err)
+		}
+	}
+	return lock, err
+}
+
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
 	
 	os.MkdirAll("networks", os.ModePerm)
@@ -555,31 +573,18 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 		}
 
 		// Otherwise, let's download it
-		lockpath, _ := filepath.Abs(filepath.Join("networks", sha + ".lck"))
-		lock, err := lockfile.New(lockpath)
-		if err != nil {
-			// Unknown error. Exit.
-			log.Fatalf("Cannot init lockfile: %v", err)
-		}
-		// Attempt to acquire lock
-		err = lock.TryLock()
-		if err != nil {
-			// Cannot acquire lock
-			if err == lockfile.ErrBusy {
-				log.Println("Download initiated by other client. Sleeping for 5 seconds...")
-				time.Sleep(5 * time.Second)
-			} else {
-				// Unknown error
-				log.Fatalf("Cannot lock: %v", err)
-			}
+		lock, err := acquireLock(sha)
+		if err == lockfile.ErrBusy {
+			log.Println("Download initiated by other client. Sleeping for 5 seconds...")
+			time.Sleep(5 * time.Second)
 		} else {
 			// Lockfile acquired, download it
-			defer lock.Unlock()
 			fmt.Printf("Downloading network...\n")
 			err = client.DownloadNetwork(httpClient, *hostname, path, sha)
 			if err != nil {
 				log.Printf("Network download failed: %v", err)
 			}
+			lock.Unlock()
 		}
 	}
 }
