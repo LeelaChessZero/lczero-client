@@ -543,12 +543,6 @@ func acquireLock(sha string) (lockfile.Lockfile, error) {
 	}
 	// Attempt to acquire lock
 	err = lock.TryLock()
-	if err != nil {
-		if err != lockfile.ErrBusy {
-			// Unknown error
-			log.Fatalf("Cannot lock: %v", err)
-		}
-	}
 	return lock, err
 }
 
@@ -574,10 +568,7 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 
 		// Otherwise, let's download it
 		lock, err := acquireLock(sha)
-		if err == lockfile.ErrBusy {
-			log.Println("Download initiated by other client. Sleeping for 5 seconds...")
-			time.Sleep(5 * time.Second)
-		} else {
+		if err == nil {
 			// Lockfile acquired, download it
 			fmt.Printf("Downloading network...\n")
 			err = client.DownloadNetwork(httpClient, *hostname, path, sha)
@@ -585,6 +576,11 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 				log.Printf("Network download failed: %v", err)
 			}
 			lock.Unlock()
+		} else if err == lockfile.ErrBusy {
+			log.Println("Download initiated by other client. Sleeping for 5 seconds...")
+			time.Sleep(5 * time.Second)
+		} else {
+			log.Fatalf("Unable to lock: %v", err);
 		}
 	}
 }
