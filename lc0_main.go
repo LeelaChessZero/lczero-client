@@ -598,7 +598,7 @@ func nextGame(httpClient *http.Client, count int) error {
 		log.Println("Starting match")
 		result, pgn, version, err := playMatch(networkPath, candidatePath, serverParams, nextGame.Flip)
 		if err != nil {
-			log.Fatalf("playMatch: %v", err)
+			log.Printf("playMatch: %v", err)
 			return err
 		}
 		extraParams := getExtraParams()
