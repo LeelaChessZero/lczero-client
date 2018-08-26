@@ -505,7 +505,7 @@ func checkValidNetwork(sha string) (string, error) {
 			}
 			file.Close()
 			if err != nil {
-				fmt.Printf("Deleting old network...\n")
+				fmt.Printf("Deleting invalid network...\n")
 				os.Remove(path)
 				return path, err
 			} else {
