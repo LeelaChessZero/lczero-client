@@ -108,14 +108,20 @@ func DownloadNetwork(httpClient *http.Client, hostname string, networkPath strin
 	if err != nil {
 		return err
 	}
-	defer r.Body.Close()
 
-	out, err := os.Create(networkPath)
+	dir, _ := filepath.Split(networkPath)
+	out, err := ioutil.TempFile(dir, sha + "_tmp")
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 
 	_, err = io.Copy(out, r.Body)
+	r.Body.Close()
+	out.Close()
+	if err == nil {
+		err = os.Rename(out.Name(), networkPath)
+	}
+	// Ensure tmpfile is erased
+	os.Remove(out.Name())
 	return err
 }

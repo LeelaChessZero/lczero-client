@@ -13,6 +13,7 @@ environment:
     GOOS: darwin
 install:
   - go get -u github.com/Tilps/chess
+  - go get -u github.com/nightlyone/lockfile
 build_script:
   - go build -o client%NAME% lc0_main.go
 artifacts:
