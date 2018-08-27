@@ -547,42 +547,40 @@ func acquireLock(sha string) (lockfile.Lockfile, error) {
 }
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
-	
 	os.MkdirAll("networks", os.ModePerm)
-
-	for {
-		// Loop until a valid network is found
-		path, err := checkValidNetwork(sha)
-		if err == nil {
-			// There is already a valid network. Use it.
-
-			if clearOld {
-				err := removeAllExcept("networks", sha)
-				if err != nil {
-					log.Printf("Failed to remove old network(s): %v", err)
-				}
-			}
-
-			return path, nil
-		}
-
-		// Otherwise, let's download it
-		lock, err := acquireLock(sha)
-		if err == nil {
-			// Lockfile acquired, download it
-			fmt.Printf("Downloading network...\n")
-			err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+	path, err := checkValidNetwork(sha)
+	if err == nil {
+		// There is already a valid network. Use it.
+		if clearOld {
+			err := removeAllExcept("networks", sha)
 			if err != nil {
-				log.Printf("Network download failed: %v", err)
+				log.Printf("Failed to remove old network(s): %v", err)
 			}
-			lock.Unlock()
-		} else if err == lockfile.ErrBusy {
-			log.Println("Download initiated by other client. Sleeping for 5 seconds...")
-			time.Sleep(5 * time.Second)
+		}
+		return path, nil
+	}
+
+	// Otherwise, let's download it
+	lock, err := acquireLock(sha)
+
+	if err != nil {
+		if err == lockfile.ErrBusy {
+			log.Println("Download initiated by other client")
+			return "", err
 		} else {
-			log.Fatalf("Unable to lock: %v", err);
+			log.Fatalf("Unable to lock: %v", err)
 		}
 	}
+
+	// Lockfile acquired, download it
+	defer lock.Unlock()
+	fmt.Println("Downloading network...")
+	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+	if err != nil {
+		log.Printf("Network download failed: %v", err)
+		return "", err
+	}
+	return checkValidNetwork(sha)
 }
 
 func nextGame(httpClient *http.Client, count int) error {
