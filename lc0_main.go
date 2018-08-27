@@ -495,22 +495,20 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 func checkValidNetwork(dir string, sha string) (string, error) {
 	// Sha already exists?
 	path := filepath.Join(dir, sha)
-	stat, err := os.Stat(path)
+	_, err := os.Stat(path)
 	if err == nil {
-		if stat.Size() != 0 {
-			file, _ := os.Open(path)
-			reader, err := gzip.NewReader(file)
-			if err == nil {
-				_, err = ioutil.ReadAll(reader)
-			}
-			file.Close()
-			if err != nil {
-				fmt.Printf("Deleting invalid network...\n")
-				os.Remove(path)
-				return path, err
-			} else {
-				return path, nil
-			}
+		file, _ := os.Open(path)
+		reader, err := gzip.NewReader(file)
+		if err == nil {
+			_, err = ioutil.ReadAll(reader)
+		}
+		file.Close()
+		if err != nil {
+			fmt.Printf("Deleting invalid network...\n")
+			os.Remove(path)
+			return path, err
+		} else {
+			return path, nil
 		}
 	}
 	return path, err
