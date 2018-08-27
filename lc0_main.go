@@ -492,9 +492,9 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	return nil
 }
 
-func checkValidNetwork(sha string) (string, error) {
+func checkValidNetwork(dir string, sha string) (string, error) {
 	// Sha already exists?
-	path := filepath.Join("networks", sha)
+	path := filepath.Join(dir, sha)
 	stat, err := os.Stat(path)
 	if err == nil {
 		if stat.Size() != 0 {
@@ -534,8 +534,8 @@ func removeAllExcept(dir string, sha string) (error) {
 	return nil
 }
 
-func acquireLock(sha string) (lockfile.Lockfile, error) {
-	lockpath, _ := filepath.Abs(filepath.Join("networks", sha + ".lck"))
+func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
+	lockpath, _ := filepath.Abs(filepath.Join(dir, sha + ".lck"))
 	lock, err := lockfile.New(lockpath)
 	if err != nil {
 		// Unknown error. Exit.
@@ -547,12 +547,13 @@ func acquireLock(sha string) (lockfile.Lockfile, error) {
 }
 
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
-	os.MkdirAll("networks", os.ModePerm)
-	path, err := checkValidNetwork(sha)
+	dir := "networks"
+	os.MkdirAll(dir, os.ModePerm)
+	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
 		if clearOld {
-			err := removeAllExcept("networks", sha)
+			err := removeAllExcept(dir, sha)
 			if err != nil {
 				log.Printf("Failed to remove old network(s): %v", err)
 			}
@@ -561,7 +562,7 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 	}
 
 	// Otherwise, let's download it
-	lock, err := acquireLock(sha)
+	lock, err := acquireLock(dir, sha)
 
 	if err != nil {
 		if err == lockfile.ErrBusy {
@@ -580,7 +581,7 @@ func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, err
 		log.Printf("Network download failed: %v", err)
 		return "", err
 	}
-	return checkValidNetwork(sha)
+	return checkValidNetwork(dir, sha)
 }
 
 func nextGame(httpClient *http.Client, count int) error {
