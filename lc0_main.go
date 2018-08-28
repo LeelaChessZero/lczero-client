@@ -300,6 +300,9 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
 				c.Version = strings.Split(line, " ")[6]
 				fmt.Println(line)
+			case strings.HasPrefix(line, "id name Lc0 "):
+				c.Version = strings.Split(line, " ")[3]
+				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				break
 				fallthrough
