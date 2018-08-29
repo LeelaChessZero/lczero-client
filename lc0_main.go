@@ -188,6 +188,9 @@ func convertMovesToPGN(moves []string) string {
 			log.Fatalf("movstr: %v", err)
 		}
 	}
+	if game.Outcome() == chess.NoOutcome && len(game.EligibleDraws()) > 1 {
+		game.Draw(game.EligibleDraws()[1])
+	}
 	game2 := chess.NewGame()
 	b, err := game.MarshalText()
 	if err != nil {
@@ -367,6 +370,9 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 			} else if game.Outcome() == chess.BlackWon {
 				result = -1
 			} else {
+				if game.Outcome() == chess.NoOutcome && len(game.EligibleDraws()) > 1 {
+					game.Draw(game.EligibleDraws()[1])
+				}
 				result = 0
 			}
 
