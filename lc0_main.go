@@ -6,11 +6,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -26,6 +28,7 @@ import (
 	"client"
 
 	"github.com/Tilps/chess"
+	"github.com/nightlyone/lockfile"
 )
 
 var (
@@ -37,7 +40,7 @@ var (
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
-	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
+//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
@@ -95,7 +98,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "16",
+		"version":  "17",
 	}
 }
 
@@ -185,6 +188,9 @@ func convertMovesToPGN(moves []string) string {
 			log.Fatalf("movstr: %v", err)
 		}
 	}
+	if game.Outcome() == chess.NoOutcome && len(game.EligibleDraws()) > 1 {
+		game.Draw(game.EligibleDraws()[1])
+	}
 	game2 := chess.NewGame()
 	b, err := game.MarshalText()
 	if err != nil {
@@ -235,10 +241,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
-	if !*debug {
-		//		c.Cmd.Args = append(c.Cmd.Args, "--quiet")
-		fmt.Println("lc0 is never quiet.")
-	}
+
 	fmt.Printf("Args: %v\n", c.Cmd.Args)
 
 	stdout, err := c.Cmd.StdoutPipe()
@@ -296,6 +299,9 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 				c.BestMove <- strings.Split(line, " ")[1]
 			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
 				c.Version = strings.Split(line, " ")[6]
+				fmt.Println(line)
+			case strings.HasPrefix(line, "id name Lc0 "):
+				c.Version = strings.Split(line, " ")[3]
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				break
@@ -361,6 +367,9 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 			} else if game.Outcome() == chess.BlackWon {
 				result = -1
 			} else {
+				if game.Outcome() == chess.NoOutcome && len(game.EligibleDraws()) > 1 {
+					game.Draw(game.EligibleDraws()[1])
+				}
 				result = 0
 			}
 
@@ -412,17 +421,6 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 
 func train(httpClient *http.Client, ngr client.NextGameResponse,
 	networkPath string, count int, params []string, doneCh chan bool) error {
-	// pid is intended for use in multi-threaded training
-	pid := os.Getpid()
-
-	dir, _ := os.Getwd()
-	if *debug {
-		logsDir := path.Join(dir, fmt.Sprintf("logs-%v", pid))
-		os.MkdirAll(logsDir, os.ModePerm)
-		logfile := path.Join(logsDir, fmt.Sprintf("%s.log", time.Now().Format("20060102150405")))
-		params = append(params, "-l"+logfile)
-	}
-
 	// lc0 needs selfplay first in the argument list.
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
@@ -489,31 +487,94 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	return nil
 }
 
-func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
+func checkValidNetwork(dir string, sha string) (string, error) {
 	// Sha already exists?
-	path := filepath.Join("networks", sha)
-	if stat, err := os.Stat(path); err == nil {
-		if stat.Size() != 0 {
+	path := filepath.Join(dir, sha)
+	_, err := os.Stat(path)
+	if err == nil {
+		file, _ := os.Open(path)
+		reader, err := gzip.NewReader(file)
+		if err == nil {
+			_, err = ioutil.ReadAll(reader)
+		}
+		file.Close()
+		if err != nil {
+			fmt.Printf("Deleting invalid network...\n")
+			os.Remove(path)
+			return path, err
+		} else {
 			return path, nil
 		}
 	}
+	return path, err
+}
 
-	if clearOld {
-		// Clean out any old networks
-		os.RemoveAll("networks")
-	}
-	os.MkdirAll("networks", os.ModePerm)
-
-	fmt.Printf("Downloading network...\n")
-	// Otherwise, let's download it
-	err := client.DownloadNetwork(httpClient, *hostname, path, sha)
+func removeAllExcept(dir string, sha string) (error) {
+	files, err := ioutil.ReadDir(dir)
 	if err != nil {
-		// Ensure there is no remnant after a failed download.
-		os.Remove(path)
+		return err
+	}
+	for _, file := range files {
+		if file.Name() == sha {
+			continue
+		}
+		fmt.Printf("Removing %v\n", file.Name())
+		err := os.RemoveAll(filepath.Join(dir, file.Name()))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
+	lockpath, _ := filepath.Abs(filepath.Join(dir, sha + ".lck"))
+	lock, err := lockfile.New(lockpath)
+	if err != nil {
+		// Unknown error. Exit.
+		log.Fatalf("Cannot init lockfile: %v", err)
+	}
+	// Attempt to acquire lock
+	err = lock.TryLock()
+	return lock, err
+}
+
+func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
+	dir := "networks"
+	os.MkdirAll(dir, os.ModePerm)
+	path, err := checkValidNetwork(dir, sha)
+	if err == nil {
+		// There is already a valid network. Use it.
+		if clearOld {
+			err := removeAllExcept(dir, sha)
+			if err != nil {
+				log.Printf("Failed to remove old network(s): %v", err)
+			}
+		}
+		return path, nil
+	}
+
+	// Otherwise, let's download it
+	lock, err := acquireLock(dir, sha)
+
+	if err != nil {
+		if err == lockfile.ErrBusy {
+			log.Println("Download initiated by other client")
+			return "", err
+		} else {
+			log.Fatalf("Unable to lock: %v", err)
+		}
+	}
+
+	// Lockfile acquired, download it
+	defer lock.Unlock()
+	fmt.Println("Downloading network...")
+	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+	if err != nil {
 		log.Printf("Network download failed: %v", err)
 		return "", err
 	}
-	return path, nil
+	return checkValidNetwork(dir, sha)
 }
 
 func nextGame(httpClient *http.Client, count int) error {
@@ -549,7 +610,7 @@ func nextGame(httpClient *http.Client, count int) error {
 		log.Println("Starting match")
 		result, pgn, version, err := playMatch(networkPath, candidatePath, serverParams, nextGame.Flip)
 		if err != nil {
-			log.Fatalf("playMatch: %v", err)
+			log.Printf("playMatch: %v", err)
 			return err
 		}
 		extraParams := getExtraParams()

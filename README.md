@@ -13,18 +13,18 @@ Pre-reqs:
 # (Bug workaround, using Tilps instead)
 # go get -u github.com/notnil/chess
 go get -u github.com/Tilps/chess
+go get -u github.com/nightlyone/lockfile
 
 ```
 
 Pull or download the `master` branch
 
 Then to produce a `lczero-client` executable:
-`go build main.go` for the `main` client
 `go build lc0_main.go` for the `lc0` client
 
 # Running
 
-First copy the `lczero` executable into the same folder as the `lczero-client` executable.
+First copy the `lc0` executable into the same folder as the `lczero-client` executable.
 
 Then, run!  Username and password are required parameters.
 ```
