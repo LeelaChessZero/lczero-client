@@ -40,7 +40,7 @@ var (
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
 //	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
-	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
+//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
@@ -238,10 +238,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
-	if !*debug {
-		//		c.Cmd.Args = append(c.Cmd.Args, "--quiet")
-		fmt.Println("lc0 is never quiet.")
-	}
+
 	fmt.Printf("Args: %v\n", c.Cmd.Args)
 
 	stdout, err := c.Cmd.StdoutPipe()
@@ -418,17 +415,6 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 
 func train(httpClient *http.Client, ngr client.NextGameResponse,
 	networkPath string, count int, params []string, doneCh chan bool) error {
-	// pid is intended for use in multi-threaded training
-	pid := os.Getpid()
-
-	dir, _ := os.Getwd()
-	if *debug {
-		logsDir := path.Join(dir, fmt.Sprintf("logs-%v", pid))
-		os.MkdirAll(logsDir, os.ModePerm)
-		logfile := path.Join(logsDir, fmt.Sprintf("%s.log", time.Now().Format("20060102150405")))
-		params = append(params, "-l"+logfile)
-	}
-
 	// lc0 needs selfplay first in the argument list.
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
