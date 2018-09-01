@@ -140,7 +140,7 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 			continue
 		}
 		resp.Body.Close()
-		if strings.Contains(body.String(), "upgrade") {
+		if resp.StatusCode != 200 && strings.Contains(body.String(), " upgrade " ) {
 			log.Fatal("The version you are using is not accepted by the server")
 		}
 		break
