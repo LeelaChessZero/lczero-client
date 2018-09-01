@@ -141,7 +141,7 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 		}
 		resp.Body.Close()
 		if resp.StatusCode != 200 && strings.Contains(body.String(), " upgrade " ) {
-			log.Fatal("The version you are using is not accepted by the server")
+			log.Fatal("The lc0 version you are using is not accepted by the server")
 		}
 		break
 	}
