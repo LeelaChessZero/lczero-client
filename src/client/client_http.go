@@ -35,6 +35,9 @@ func postParams(httpClient *http.Client, uri string, data map[string]string, tar
 	if target != nil {
 		err = json.Unmarshal(b, target)
 		if err != nil {
+			if strings.Contains(string(b), " upgrade ") {
+				log.Fatal("The client version you are using is not accepted by the server")
+			}
 			log.Printf("Bad JSON from %s -- %s\n", uri, string(b))
 		}
 	}
