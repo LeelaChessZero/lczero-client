@@ -46,6 +46,7 @@ var (
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
+	keep     = flag.Bool("keep", false, "Do not delete old network files")
 )
 
 // Settings holds username and password.
@@ -624,7 +625,7 @@ func nextGame(httpClient *http.Client, count int) error {
 	}
 
 	if nextGame.Type == "train" {
-		networkPath, err := getNetwork(httpClient, nextGame.Sha, true)
+		networkPath, err := getNetwork(httpClient, nextGame.Sha, !*keep)
 		if err != nil {
 			return err
 		}
