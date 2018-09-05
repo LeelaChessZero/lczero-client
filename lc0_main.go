@@ -47,6 +47,7 @@ var (
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	keep     = flag.Bool("keep", false, "Do not delete old network files")
+	keepTime = flag.String("keep-time", "12h", "Delete network files older than this")
 )
 
 // Settings holds username and password.
@@ -522,6 +523,10 @@ func removeAllExcept(dir string, sha string) (error) {
 		if file.Name() == sha {
 			continue
 		}
+		timeLimit, _ := time.ParseDuration(*keepTime)
+		if time.Since(file.ModTime()) < timeLimit {
+			continue
+		}
 		fmt.Printf("Removing %v\n", file.Name())
 		err := os.RemoveAll(filepath.Join(dir, file.Name()))
 		if err != nil {
@@ -716,6 +721,10 @@ func main() {
 	}
 	if len(*password) == 0 {
 		log.Fatal("You must specify a non-empty password")
+	}
+	_, err :=time.ParseDuration(*keepTime)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	httpClient := &http.Client{}
