@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -35,6 +36,7 @@ var (
 	startTime  time.Time
 	totalGames int
 	pendingNextGame *client.NextGameResponse
+	randId   int
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -100,6 +102,7 @@ func getExtraParams() map[string]string {
 		"user":     *user,
 		"password": *password,
 		"version":  "17",
+		"id":       strconv.Itoa(randId),
 	}
 }
 
@@ -697,6 +700,10 @@ func hideLc0argsFlag() {
 }
 
 func main() {
+	randBytes := make([]byte, 2)
+	rand.Reader.Read(randBytes)
+	// Ignoring errors from above is deliberate, and unsafe - care should be taken on server before relying on the id field.
+	randId = int(randBytes[0]) << 8 | int(randBytes[1])
 	testEP()
 
 	hideLc0argsFlag()
