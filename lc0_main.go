@@ -47,6 +47,7 @@ var (
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	keep     = flag.Bool("keep", false, "Do not delete old network files")
+	trainOnly= flag.Bool("train-only", false, "Do not play match games")
 )
 
 // Settings holds username and password.
@@ -546,18 +547,18 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
 	dir := "networks"
 	os.MkdirAll(dir, os.ModePerm)
+	if clearOld {
+		err := removeAllExcept(dir, sha)
+		if err != nil {
+			log.Printf("Failed to remove old network(s): %v", err)
+		}
+	}
+
 	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
-		if clearOld {
-			err := removeAllExcept(dir, sha)
-			if err != nil {
-				log.Printf("Failed to remove old network(s): %v", err)
-			}
-		}
 		return path, nil
 	}
-
 	// Otherwise, let's download it
 	lock, err := acquireLock(dir, sha)
 
@@ -602,6 +603,9 @@ func nextGame(httpClient *http.Client, count int) error {
 	log.Printf("serverParams: %s", serverParams)
 
 	if nextGame.Type == "match" {
+		if *trainOnly {
+			return errors.New("Skipping match")
+		}
 		log.Println("Starting match")
 		networkPath, err := getNetwork(httpClient, nextGame.Sha, false)
 		if err != nil {
@@ -648,13 +652,16 @@ func nextGame(httpClient *http.Client, count int) error {
 					close(doneCh)
 					return
 				}
+				errCount = 0
+				if *trainOnly && ng.Type == "match" {
+					continue
+				}
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
 					pendingNextGame = &ng
 					doneCh <- true
 					close(doneCh)
 					return
 				}
-				errCount = 0
 			}
 		}()
 		err = train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
