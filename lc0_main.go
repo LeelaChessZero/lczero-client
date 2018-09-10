@@ -102,7 +102,7 @@ func getExtraParams() map[string]string {
 		"user":     *user,
 		"password": *password,
 		"version":  "17",
-		"id":       strconv.Itoa(randId),
+		"token":       strconv.Itoa(randId),
 	}
 }
 
@@ -701,9 +701,12 @@ func hideLc0argsFlag() {
 
 func main() {
 	randBytes := make([]byte, 2)
-	rand.Reader.Read(randBytes)
-	// Ignoring errors from above is deliberate, and unsafe - care should be taken on server before relying on the id field.
-	randId = int(randBytes[0]) << 8 | int(randBytes[1])
+	_, err := rand.Reader.Read(randBytes)
+	if err != nil {
+		randId = -1
+	} else {
+		randId = int(randBytes[0]) << 8 | int(randBytes[1])
+	}
 	testEP()
 
 	hideLc0argsFlag()
