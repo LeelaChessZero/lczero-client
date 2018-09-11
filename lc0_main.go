@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -35,6 +36,7 @@ var (
 	startTime  time.Time
 	totalGames int
 	pendingNextGame *client.NextGameResponse
+	randId   int
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -46,6 +48,7 @@ var (
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
+	keep     = flag.Bool("keep", false, "Do not delete old network files")
 )
 
 // Settings holds username and password.
@@ -98,7 +101,8 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "17",
+		"version":  "18",
+		"token":       strconv.Itoa(randId),
 	}
 }
 
@@ -624,7 +628,7 @@ func nextGame(httpClient *http.Client, count int) error {
 	}
 
 	if nextGame.Type == "train" {
-		networkPath, err := getNetwork(httpClient, nextGame.Sha, true)
+		networkPath, err := getNetwork(httpClient, nextGame.Sha, !*keep)
 		if err != nil {
 			return err
 		}
@@ -696,6 +700,13 @@ func hideLc0argsFlag() {
 }
 
 func main() {
+	randBytes := make([]byte, 2)
+	_, err := rand.Reader.Read(randBytes)
+	if err != nil {
+		randId = -1
+	} else {
+		randId = int(randBytes[0]) << 8 | int(randBytes[1])
+	}
 	testEP()
 
 	hideLc0argsFlag()
