@@ -276,6 +276,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		if parallelism <= 0 {
 			parallelism = 32
 		}
+	} else if hasCudnn {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn,gpu=%v", *gpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl,gpu=%v", *gpu))
 	}
@@ -308,12 +310,12 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
 			case strings.Contains(line, "Your GPU doesn't support FP16"):
-				if *backopts == "" && hasCudnn {
-					log.Println("cudnn-fp16 backend not available, switching to cudnn")
-					*backopts = fmt.Sprintf("backend=cudnn,gpu=%v", *gpu)
+				log.Println("GPU doesn't support the cudnn-fp16 backend")
+				if *backopts == "" {
+					hasCudnnFp16 = false
 					c.Retry <- true
 				} else {
-					log.Fatal("cudnn-fp16 backend not available")
+					log.Fatal("Terminating")
 				}
 			case strings.HasPrefix(line, "resign_report "):
 				args := strings.Split(line, " ")
