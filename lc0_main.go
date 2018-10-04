@@ -37,6 +37,10 @@ var (
 	totalGames int
 	pendingNextGame *client.NextGameResponse
 	randId   int
+	hasCudnn bool
+	hasCudnnFp16 bool
+	hasOpenCL  bool
+	hasBlas  bool
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -177,6 +181,7 @@ type cmdWrapper struct {
 	BestMove chan string
 	gi       chan gameInfo
 	Version  string
+	Retry    chan bool
 }
 
 func (c *cmdWrapper) openInput() {
@@ -212,8 +217,31 @@ func createCmdWrapper() *cmdWrapper {
 		gi:       make(chan gameInfo),
 		BestMove: make(chan string),
 		Version: "v0.10.0",
+		Retry:    make(chan bool),
 	}
 	return c
+}
+
+func checkLc0() {
+	dir, _ := os.Getwd()
+	cmd := exec.Command(path.Join(dir, "lc0"))
+	cmd.Args = append(cmd.Args, "--help")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("blas")) {
+		hasBlas = true
+	}
+	if bytes.Contains(out, []byte("cudnn")) {
+		hasCudnn = true
+	}
+	if bytes.Contains(out, []byte("cudnn-fp16")) {
+		hasCudnnFp16 = true
+	}
+	if bytes.Contains(out, []byte("opencl")) {
+		hasOpenCL = true
+	}
 }
 
 func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
@@ -232,6 +260,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		parts := strings.Split(*lc0Args, " ")
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
+	parallelism := *parallel
 	if *backopts != "" {
 		// Check agains small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
@@ -242,9 +271,14 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			}
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
+	} else if hasCudnnFp16 {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16"))
+		if parallelism <= 0 {
+			parallelism = 32
+		}
 	}
-	if *parallel > 0 && mode == "selfplay" {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", *parallel))
+	if parallelism > 0 && mode == "selfplay" {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", parallelism))
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
@@ -256,7 +290,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		log.Fatal(err)
 	}
 
-	c.Cmd.Stderr = os.Stdout
+	c.Cmd.Stderr = c.Cmd.Stdout
 
 	// If the game wasn't played with resign, and the engine supports it,
 	// this will be populated by the resign_report before the gameready
@@ -271,6 +305,14 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			line := stdoutScanner.Text()
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
+			case strings.Contains(line, "Your GPU doesn't support FP16"):
+				if *backopts == "" && hasCudnn {
+					log.Println("cudnn-fp16 backend not available, switching to cudnn")
+					*backopts = "backend=cudnn"
+					c.Retry <- true
+				} else {
+					log.Fatal("cudnn-fp16 backend not available")
+				}
 			case strings.HasPrefix(line, "resign_report "):
 				args := strings.Split(line, " ")
 				fp_threshold_idx := -1
@@ -399,6 +441,8 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 		io.WriteString(p.Input, "go nodes 800\n")
 
 		select {
+		case <-p.Retry:
+			return 0, "", "", errors.New("retry")
 		case bestMove, ok := <-p.BestMove:
 			if !ok {
 				log.Println("engine failed")
@@ -449,6 +493,8 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	progressOrKill := false
 	for done := false; !done; {
 		select {
+		case <-c.Retry:
+			return errors.New("retry")
 		case <-doneCh:
 			done = true
 			progressOrKill = true
@@ -712,6 +758,8 @@ func main() {
 	hideLc0argsFlag()
 	flag.Parse()
 
+	checkLc0()
+
 	if *useTestServer {
 		*hostname = "http://testserver.lczero.org"
 	}
@@ -732,7 +780,9 @@ func main() {
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
-		if err != nil {
+		if err.Error() == "retry" {
+			continue
+		} else if err != nil {
 			log.Print(err)
 			log.Print("Sleeping for 30 seconds...")
 			time.Sleep(30 * time.Second)
