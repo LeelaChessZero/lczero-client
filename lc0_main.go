@@ -45,7 +45,7 @@ var (
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
-//	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
+	gpu      = flag.Int("gpu", 0, "GPU to use (default 0, ignored if --backend-opts used)")
 //	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -272,10 +272,12 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
 	} else if hasCudnnFp16 {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16"))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16,gpu=%v", *gpu))
 		if parallelism <= 0 {
 			parallelism = 32
 		}
+	} else if hasOpenCL {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl,gpu=%v", *gpu))
 	}
 	if parallelism > 0 && mode == "selfplay" {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", parallelism))
@@ -308,7 +310,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			case strings.Contains(line, "Your GPU doesn't support FP16"):
 				if *backopts == "" && hasCudnn {
 					log.Println("cudnn-fp16 backend not available, switching to cudnn")
-					*backopts = "backend=cudnn"
+					*backopts = fmt.Sprintf("backend=cudnn,gpu=%v", *gpu)
 					c.Retry <- true
 				} else {
 					log.Fatal("cudnn-fp16 backend not available")
