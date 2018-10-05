@@ -652,6 +652,10 @@ func nextGame(httpClient *http.Client, count int) error {
 					return
 				}
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					if ng.Type == "match" {
+						// Prefetch the next net before terminating game.
+						getNetwork(httpClient, ng.CandidateSha, false)
+					}
 					pendingNextGame = &ng
 					doneCh <- true
 					close(doneCh)
