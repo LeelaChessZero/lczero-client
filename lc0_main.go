@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -35,6 +36,7 @@ var (
 	startTime  time.Time
 	totalGames int
 	pendingNextGame *client.NextGameResponse
+	randId   int
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -100,7 +102,8 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "17",
+		"version":  "18",
+		"token":       strconv.Itoa(randId),
 	}
 }
 
@@ -657,6 +660,10 @@ func nextGame(httpClient *http.Client, count int) error {
 					continue
 				}
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					if ng.Type == "match" {
+						// Prefetch the next net before terminating game.
+						getNetwork(httpClient, ng.CandidateSha, false)
+					}
 					pendingNextGame = &ng
 					doneCh <- true
 					close(doneCh)
@@ -704,6 +711,13 @@ func hideLc0argsFlag() {
 }
 
 func main() {
+	randBytes := make([]byte, 2)
+	_, err := rand.Reader.Read(randBytes)
+	if err != nil {
+		randId = -1
+	} else {
+		randId = int(randBytes[0]) << 8 | int(randBytes[1])
+	}
 	testEP()
 
 	hideLc0argsFlag()
