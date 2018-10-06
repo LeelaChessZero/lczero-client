@@ -233,11 +233,14 @@ func checkLc0() {
 	if bytes.Contains(out, []byte("blas")) {
 		hasBlas = true
 	}
-	if bytes.Contains(out, []byte("cudnn")) {
-		hasCudnn = true
-	}
 	if bytes.Contains(out, []byte("cudnn-fp16")) {
 		hasCudnnFp16 = true
+	}
+	if bytes.Contains(out, []byte("cudnn")) {
+		hasCudnn = true
+		if hasCudnnFp16 && bytes.Index(out, []byte("cudnn")) == bytes.LastIndex(out, []byte("cudnn")) {
+			hasCudnn = false
+		}
 	}
 	if bytes.Contains(out, []byte("opencl")) {
 		hasOpenCL = true
