@@ -515,6 +515,12 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 		case gi, ok := <-c.gi:
 			if !ok {
+				// Under windows we don't get the exception, so also check here.
+				if hasCudnnFp16 && totalGames==0 && *backopts==""{
+					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
+					hasCudnnFp16=false
+					return errors.New("retry")
+				}
 				log.Printf("GameInfo channel closed, exiting train loop")
 				done = true
 				break
