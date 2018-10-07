@@ -797,10 +797,11 @@ func main() {
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
-		if err.Error() == "retry" {
-			time.Sleep(1 * time.Second)
-			continue
-		} else if err != nil {
+		if err != nil {
+			if err.Error() == "retry" {
+				time.Sleep(1 * time.Second)
+				continue
+			}
 			log.Print(err)
 			log.Print("Sleeping for 30 seconds...")
 			time.Sleep(30 * time.Second)
