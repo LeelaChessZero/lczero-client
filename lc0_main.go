@@ -53,6 +53,7 @@ var (
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	keep     = flag.Bool("keep", false, "Do not delete old network files")
+	version  = flag.Bool("version", false, "Print version and exit.")
 )
 
 // Settings holds username and password.
@@ -763,6 +764,8 @@ func hideLc0argsFlag() {
 }
 
 func main() {
+	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
+
 	randBytes := make([]byte, 2)
 	_, err := rand.Reader.Read(randBytes)
 	if err != nil {
@@ -774,6 +777,10 @@ func main() {
 
 	hideLc0argsFlag()
 	flag.Parse()
+
+	if *version {
+		return
+	}
 
 	checkLc0()
 
