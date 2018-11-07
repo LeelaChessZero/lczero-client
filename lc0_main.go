@@ -52,6 +52,7 @@ var (
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
+	runId    = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep     = flag.Bool("keep", false, "Do not delete old network files")
 	version  = flag.Bool("version", false, "Print version and exit.")
 )
@@ -766,13 +767,6 @@ func hideLc0argsFlag() {
 func main() {
 	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
 
-	randBytes := make([]byte, 2)
-	_, err := rand.Reader.Read(randBytes)
-	if err != nil {
-		randId = -1
-	} else {
-		randId = int(randBytes[0]) << 8 | int(randBytes[1])
-	}
 	testEP()
 
 	hideLc0argsFlag()
@@ -783,6 +777,18 @@ func main() {
 	}
 
 	checkLc0()
+
+	// 640 ought to be enough for anybody.
+	if *runId > 640 {
+		log.Fatal("Training run number too large")
+	}
+	randBytes := make([]byte, 2)
+	_, err := rand.Reader.Read(randBytes)
+	if err != nil {
+		randId = -1
+	} else {
+		randId = int(*runId) << 16 | int(randBytes[0]) << 8 | int(randBytes[1])
+	}
 
 	if *useTestServer {
 		*hostname = "http://testserver.lczero.org"
