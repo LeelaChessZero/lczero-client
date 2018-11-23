@@ -249,7 +249,7 @@ func checkLc0() {
 	}
 }
 
-func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
+func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
 	// Add the "selfplay" or "uci" part first
@@ -290,7 +290,12 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", parallelism))
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
-	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
+	if otherNetPath == "" {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
+	} else {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--player1.weights=%s", networkPath))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--player2.weights=%s", otherNetPath))
+	}
 
 	fmt.Printf("Args: %v\n", c.Cmd.Args)
 
@@ -384,7 +389,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 	baseline := createCmdWrapper()
 	params = append([]string{"uci"}, params...)
 	log.Println("launching 1")
-	baseline.launch(baselinePath, params, true)
+	baseline.launch(baselinePath, "", params, true)
 	defer baseline.Input.Close()
 	defer func() {
 		log.Println("Waiting for baseline to exit.")
@@ -394,7 +399,7 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 
 	candidate := createCmdWrapper()
 	log.Println("launching 2")
-	candidate.launch(candidatePath, params, true)
+	candidate.launch(candidatePath, "", params, true)
 	defer candidate.Input.Close()
 	defer func() {
 		log.Println("Waiting for candidate to exit.")
@@ -480,12 +485,12 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 }
 
 func train(httpClient *http.Client, ngr client.NextGameResponse,
-	networkPath string, count int, params []string, doneCh chan bool) error {
+	networkPath string, otherNetPath string, count int, params []string, doneCh chan bool) error {
 	// lc0 needs selfplay first in the argument list.
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
 	c := createCmdWrapper()
-	c.launch(networkPath, params /* input= */, false)
+	c.launch(networkPath, otherNetPath, params /* input= */, false)
 	trainDir := ""
 	defer func() {
 		// Remove the training dir when we're done training.
@@ -693,6 +698,13 @@ func nextGame(httpClient *http.Client, count int) error {
 		if err != nil {
 			return err
 		}
+		otherNetPath := ""
+		if nextGame.CandidateSha != "" {
+			otherNetPath, err = getNetwork(httpClient, nextGame.CandidateSha, false)
+			if err != nil {
+				return err
+			}
+		}
 		doneCh := make(chan bool)
 		go func() {
 			errCount := 0
@@ -725,7 +737,7 @@ func nextGame(httpClient *http.Client, count int) error {
 				errCount = 0
 			}
 		}()
-		err = train(httpClient, nextGame, networkPath, count, serverParams, doneCh)
+		err = train(httpClient, nextGame, networkPath, otherNetPath, count, serverParams, doneCh)
 		// Ensure the anonymous function stops retrying.
 		nextGame.Type = "Done"
 		if err != nil {
