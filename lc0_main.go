@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -35,19 +36,26 @@ var (
 	startTime  time.Time
 	totalGames int
 	pendingNextGame *client.NextGameResponse
+	randId   int
+	hasCudnn bool
+	hasCudnnFp16 bool
+	hasOpenCL  bool
+	hasBlas  bool
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
-//	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
+	gpu      = flag.Int("gpu", 0, "GPU to use (default 0, ignored if --backend-opts used)")
 //	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
+	runId    = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep     = flag.Bool("keep", false, "Do not delete old network files")
 	keepTime = flag.String("keep-time", "12h", "Delete network files older than this")
+	version  = flag.Bool("version", false, "Print version and exit.")
 )
 
 // Settings holds username and password.
@@ -100,7 +108,8 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "17",
+		"version":  "18",
+		"token":       strconv.Itoa(randId),
 	}
 }
 
@@ -175,6 +184,7 @@ type cmdWrapper struct {
 	BestMove chan string
 	gi       chan gameInfo
 	Version  string
+	Retry    chan bool
 }
 
 func (c *cmdWrapper) openInput() {
@@ -210,8 +220,34 @@ func createCmdWrapper() *cmdWrapper {
 		gi:       make(chan gameInfo),
 		BestMove: make(chan string),
 		Version: "v0.10.0",
+		Retry:    make(chan bool),
 	}
 	return c
+}
+
+func checkLc0() {
+	dir, _ := os.Getwd()
+	cmd := exec.Command(path.Join(dir, "lc0"))
+	cmd.Args = append(cmd.Args, "--help")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("blas")) {
+		hasBlas = true
+	}
+	if bytes.Contains(out, []byte("cudnn-fp16")) {
+		hasCudnnFp16 = true
+	}
+	if bytes.Contains(out, []byte("cudnn")) {
+		hasCudnn = true
+		if hasCudnnFp16 && bytes.Index(out, []byte("cudnn")) == bytes.LastIndex(out, []byte("cudnn")) {
+			hasCudnn = false
+		}
+	}
+	if bytes.Contains(out, []byte("opencl")) {
+		hasOpenCL = true
+	}
 }
 
 func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
@@ -230,6 +266,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		parts := strings.Split(*lc0Args, " ")
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
+	parallelism := *parallel
 	if *backopts != "" {
 		// Check agains small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
@@ -240,9 +277,18 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			}
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
+	} else if hasCudnnFp16 {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16,gpu=%v", *gpu))
+		if parallelism <= 0 {
+			parallelism = 32
+		}
+	} else if hasCudnn {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn,gpu=%v", *gpu))
+	} else if hasOpenCL {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl,gpu=%v", *gpu))
 	}
-	if *parallel > 0 && mode == "selfplay" {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", *parallel))
+	if parallelism > 0 && mode == "selfplay" {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", parallelism))
 	}
 	c.Cmd.Args = append(c.Cmd.Args, args...)
 	c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--weights=%s", networkPath))
@@ -254,7 +300,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		log.Fatal(err)
 	}
 
-	c.Cmd.Stderr = os.Stdout
+	c.Cmd.Stderr = c.Cmd.Stdout
 
 	// If the game wasn't played with resign, and the engine supports it,
 	// this will be populated by the resign_report before the gameready
@@ -269,6 +315,14 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 			line := stdoutScanner.Text()
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
+			case strings.Contains(line, "Your GPU doesn't support FP16"):
+				log.Println("GPU doesn't support the cudnn-fp16 backend")
+				if *backopts == "" {
+					hasCudnnFp16 = false
+					c.Retry <- true
+				} else {
+					log.Fatal("Terminating")
+				}
 			case strings.HasPrefix(line, "resign_report "):
 				args := strings.Split(line, " ")
 				fp_threshold_idx := -1
@@ -397,6 +451,8 @@ func playMatch(baselinePath string, candidatePath string, params []string, flip 
 		io.WriteString(p.Input, "go nodes 800\n")
 
 		select {
+		case <-p.Retry:
+			return 0, "", "", errors.New("retry")
 		case bestMove, ok := <-p.BestMove:
 			if !ok {
 				log.Println("engine failed")
@@ -447,6 +503,8 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	progressOrKill := false
 	for done := false; !done; {
 		select {
+		case <-c.Retry:
+			return errors.New("retry")
 		case <-doneCh:
 			done = true
 			progressOrKill = true
@@ -460,6 +518,12 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 		case gi, ok := <-c.gi:
 			if !ok {
+				// Under windows we don't get the exception, so also check here.
+				if hasCudnnFp16 && totalGames==0 && *backopts==""{
+					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
+					hasCudnnFp16=false
+					return errors.New("retry")
+				}
 				log.Printf("GameInfo channel closed, exiting train loop")
 				done = true
 				break
@@ -654,6 +718,10 @@ func nextGame(httpClient *http.Client, count int) error {
 					return
 				}
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					if ng.Type == "match" {
+						// Prefetch the next net before terminating game.
+						getNetwork(httpClient, ng.CandidateSha, false)
+					}
 					pendingNextGame = &ng
 					doneCh <- true
 					close(doneCh)
@@ -702,10 +770,30 @@ func hideLc0argsFlag() {
 }
 
 func main() {
+	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
+
 	testEP()
 
 	hideLc0argsFlag()
 	flag.Parse()
+
+	if *version {
+		return
+	}
+
+	checkLc0()
+
+	// 640 ought to be enough for anybody.
+	if *runId > 640 {
+		log.Fatal("Training run number too large")
+	}
+	randBytes := make([]byte, 2)
+	_, err := rand.Reader.Read(randBytes)
+	if err != nil {
+		randId = -1
+	} else {
+		randId = int(*runId) << 16 | int(randBytes[0]) << 8 | int(randBytes[1])
+	}
 
 	if *useTestServer {
 		*hostname = "http://testserver.lczero.org"
@@ -722,7 +810,7 @@ func main() {
 	if len(*password) == 0 {
 		log.Fatal("You must specify a non-empty password")
 	}
-	_, err :=time.ParseDuration(*keepTime)
+	_, err =time.ParseDuration(*keepTime)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -732,6 +820,10 @@ func main() {
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
 		if err != nil {
+			if err.Error() == "retry" {
+				time.Sleep(1 * time.Second)
+				continue
+			}
 			log.Print(err)
 			log.Print("Sleeping for 30 seconds...")
 			time.Sleep(30 * time.Second)
