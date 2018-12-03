@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -33,22 +34,22 @@ import (
 )
 
 var (
-	startTime  time.Time
-	totalGames int
+	startTime       time.Time
+	totalGames      int
 	pendingNextGame *client.NextGameResponse
-	randId   int
+	randId          int
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
-//	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
-//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
+	//	gpu      = flag.Int("gpu", -1, "ID of the OpenCL device to use (-1 for default, or no GPU)")
+	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
-	parallel = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
+	parallel      = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
-	keep     = flag.Bool("keep", false, "Do not delete old network files")
+	keep          = flag.Bool("keep", false, "Do not delete old network files")
 )
 
 // Settings holds username and password.
@@ -102,7 +103,7 @@ func getExtraParams() map[string]string {
 		"user":     *user,
 		"password": *password,
 		"version":  "18",
-		"token":       strconv.Itoa(randId),
+		"token":    strconv.Itoa(randId),
 	}
 }
 
@@ -144,7 +145,7 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 			continue
 		}
 		resp.Body.Close()
-		if resp.StatusCode != 200 && strings.Contains(body.String(), " upgrade " ) {
+		if resp.StatusCode != 200 && strings.Contains(body.String(), " upgrade ") {
 			log.Fatal("The lc0 version you are using is not accepted by the server")
 		}
 		break
@@ -164,7 +165,7 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 type gameInfo struct {
 	pgn   string
 	fname string
-	// If >= 0, this is the value which if resign threshold was set 
+	// If >= 0, this is the value which if resign threshold was set
 	// higher a false positive would have occurred if the game had been
 	// played with resign.
 	fp_threshold float64
@@ -211,7 +212,7 @@ func createCmdWrapper() *cmdWrapper {
 	c := &cmdWrapper{
 		gi:       make(chan gameInfo),
 		BestMove: make(chan string),
-		Version: "v0.10.0",
+		Version:  "v0.10.0",
 	}
 	return c
 }
@@ -237,7 +238,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
-				case "random":
+			case "random":
 				log.Fatalf("Not accepted in --backend-opts: %s", token)
 			}
 		}
@@ -276,7 +277,7 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 				fp_threshold_idx := -1
 				for idx, arg := range args {
 					if arg == "fp_threshold" {
-						fp_threshold_idx = idx+1
+						fp_threshold_idx = idx + 1
 					}
 				}
 				if fp_threshold_idx >= 0 {
@@ -296,8 +297,8 @@ func (c *cmdWrapper) launch(networkPath string, args []string, input bool) {
 					log.Printf("Malformed gameready: %q", line)
 					break
 				}
-				file := line[idx1+13:idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)]," "))
+				file := line[idx1+13 : idx2-1]
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "))
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold}
 				last_fp_threshold = -1.0
@@ -502,7 +503,14 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 		file, _ := os.Open(path)
 		reader, err := gzip.NewReader(file)
 		if err == nil {
-			_, err = ioutil.ReadAll(reader)
+			var bytes []byte
+			bytes, err = ioutil.ReadAll(reader)
+			sum := sha256.Sum256(bytes)
+			got := fmt.Sprintf("%x", sum)
+			if sha != got {
+				text := fmt.Sprintf("sha mismatch want:\n%s\ngot\n%s\n", sha, got)
+				err = errors.New(text)
+			}
 		}
 		file.Close()
 		if err != nil {
@@ -516,7 +524,7 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 	return path, err
 }
 
-func removeAllExcept(dir string, sha string) (error) {
+func removeAllExcept(dir string, sha string) error {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
@@ -535,7 +543,7 @@ func removeAllExcept(dir string, sha string) (error) {
 }
 
 func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
-	lockpath, _ := filepath.Abs(filepath.Join(dir, sha + ".lck"))
+	lockpath, _ := filepath.Abs(filepath.Join(dir, sha+".lck"))
 	lock, err := lockfile.New(lockpath)
 	if err != nil {
 		// Unknown error. Exit.
@@ -681,7 +689,7 @@ func testEP() {
 	game.MoveStr("b5")
 	game.MoveStr("axb6")
 
-	if strings.Contains(game.String(),"e.p.") {
+	if strings.Contains(game.String(), "e.p.") {
 		log.Fatal("You need a more recent version of package github.com/Tilps/chess")
 	}
 }
@@ -689,7 +697,7 @@ func testEP() {
 func hideLc0argsFlag() {
 	shown := new(flag.FlagSet)
 	flag.VisitAll(func(f *flag.Flag) {
-		if (f.Name != "lc0args") {
+		if f.Name != "lc0args" {
 			shown.Var(f.Value, f.Name, f.Usage)
 		}
 	})
@@ -705,7 +713,7 @@ func main() {
 	if err != nil {
 		randId = -1
 	} else {
-		randId = int(randBytes[0]) << 8 | int(randBytes[1])
+		randId = int(randBytes[0])<<8 | int(randBytes[1])
 	}
 	testEP()
 
