@@ -107,7 +107,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":     *user,
 		"password": *password,
-		"version":  "19",
+		"version":  "20",
 		"token":       strconv.Itoa(randId),
 	}
 }
