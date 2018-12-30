@@ -757,7 +757,7 @@ func nextGame(httpClient *http.Client, count int) error {
 			return err
 		}
 		log.Println("Starting match")
-	    possibleNextGame, err := playMatch(httpClient, nextGame, networkPath, candidatePath, serverParams)
+		possibleNextGame, err := playMatch(httpClient, nextGame, networkPath, candidatePath, serverParams)
 		if err != nil {
 			log.Printf("playMatch: %v", err)
 			return err
