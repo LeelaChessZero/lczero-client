@@ -418,9 +418,11 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	params = append(params, "--visits=800")
 	c := createCmdWrapper()
 	c.launch(candidatePath, baselinePath, params /* input= */, false)
-	trainDir := ""
+	trainDirHolder := make([]string, 1)
+	trainDirHolder[0] = ""
 	defer func() {
 		// Remove the training dir when we're done training.
+		trainDir := trainDirHolder[0]
 		if trainDir != "" {
 			log.Printf("Removing traindir: %s", trainDir)
 			err := os.RemoveAll(trainDir)
@@ -535,7 +537,7 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 			}
 			totalMatches++
 			progressOrKill = true
-			trainDir = path.Dir(gi.fname)
+			trainDirHolder[0] = path.Dir(gi.fname)
 			wg.Add(1)
 			go func() {
 				select {
@@ -570,9 +572,11 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	params = append(params, "--training=true")
 	c := createCmdWrapper()
 	c.launch(networkPath, otherNetPath, params /* input= */, false)
-	trainDir := ""
+	trainDirHolder := make([]string, 1)
+	trainDirHolder[0] = ""
 	defer func() {
 		// Remove the training dir when we're done training.
+		trainDir := trainDirHolder[0]
 		if trainDir != "" {
 			log.Printf("Removing traindir: %s", trainDir)
 			err := os.RemoveAll(trainDir)
@@ -614,8 +618,8 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
-			trainDir = path.Dir(gi.fname)
-			log.Printf("trainDir=%s", trainDir)
+			trainDirHolder[0] = path.Dir(gi.fname)
+			log.Printf("trainDir=%s", trainDirHolder[0])
 			wg.Add(1)
 			go func() {
 				uploadGame(httpClient, gi.fname, gi.pgn, ngr, c.Version, gi.fp_threshold)
