@@ -439,6 +439,8 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	var pendingNextGame *client.NextGameResponse
 	totalMatches := 0
 	go func() {
+		defer wg.Done()
+		defer close(doneCh)
 		errCount := 0
 		curng := &ngr
 		var flipped []gameInfo
@@ -447,7 +449,6 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 			select {
 			case <-reverseDoneCh:
 				log.Println("Match uploader exiting")
-				wg.Done()
 				return
 			case gi, _ := <-gameInfoCh:
 				if gi.player1 == "black" {
@@ -489,15 +490,11 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 						if errCount < 10 {
 							break
 						}
-						close(doneCh)
-						wg.Done()
 						return
 					}
 					if ng.Type != ngr.Type || ng.Sha != ngr.Sha || ng.CandidateSha != ngr.CandidateSha {
 						log.Println("Current match finished.")
 						pendingNextGame = &ng
-						close(doneCh)
-						wg.Done()
 						return
 					}
 					curng = &ng
@@ -505,12 +502,12 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 				}
 			}
 		}
-		wg.Done()
 	}()
 	progressOrKill := false
 	for done := false; !done; {
 		select {
 		case <-c.Retry:
+			close(reverseDoneCh)
 			return nil, errors.New("retry")
 		case <-doneCh:
 			done = true
@@ -529,6 +526,7 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 				if hasCudnnFp16 && totalMatches == 0 && *backopts == "" {
 					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
 					hasCudnnFp16 = false
+					close(reverseDoneCh)
 					return nil, errors.New("retry")
 				}
 				log.Printf("GameInfo channel closed, exiting match loop")
@@ -787,6 +785,7 @@ func nextGame(httpClient *http.Client, count int) error {
 		}
 		doneCh := make(chan bool)
 		go func() {
+			defer close(doneCh)
 			errCount := 0
 			for {
 				time.Sleep(60 * time.Second)
@@ -800,8 +799,6 @@ func nextGame(httpClient *http.Client, count int) error {
 					if errCount < 10 {
 						continue
 					}
-					doneCh <- true
-					close(doneCh)
 					return
 				}
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
@@ -810,8 +807,6 @@ func nextGame(httpClient *http.Client, count int) error {
 						getNetwork(httpClient, ng.CandidateSha, false)
 					}
 					pendingNextGame = &ng
-					doneCh <- true
-					close(doneCh)
 					return
 				}
 				errCount = 0
