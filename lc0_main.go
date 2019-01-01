@@ -420,10 +420,9 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	params = append(params, "--training=true")
 	params = append(params, "--visits=800")
 	c := createCmdWrapper()
-	// Enforce a parallelism of 2 for match games - otherwise there could be significant 'short game' bias.
-	// With parallelism of 2 there is always one normal and one flipped game in progress at a time, ensuring no bias.
-	// Match games are played with settings designed to utilize a full gpu rather than aiming for accuracy like training games.
-	// So parallelism of 2 should be plenty.
+	// Enforce a parallelism of 2 for match games - to reduce the level of 'short game' bias.
+	// Match games use parameter settings that utilize more gpu than a single game in training,
+	// so 2 should be enough to get decent saturation.
 	c.launch(candidatePath, baselinePath, params /* input= */, false, 2)
 	trainDirHolder := make([]string, 1)
 	trainDirHolder[0] = ""
