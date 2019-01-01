@@ -251,7 +251,7 @@ func checkLc0() {
 	}
 }
 
-func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
+func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool, parallelismOverride int) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
 	// Add the "selfplay" or "uci" part first
@@ -268,6 +268,9 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
 	parallelism := *parallel
+	if parallelismOverride > 0 {
+		parallelism = parallelismOverride
+	}
 	if *backopts != "" {
 		// Check agains small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
@@ -417,7 +420,11 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	params = append(params, "--training=true")
 	params = append(params, "--visits=800")
 	c := createCmdWrapper()
-	c.launch(candidatePath, baselinePath, params /* input= */, false)
+	// Enforce a parallelism of 2 for match games - otherwise there could be significant 'short game' bias.
+	// With parallelism of 2 there is always one normal and one flipped game in progress at a time, ensuring no bias.
+	// Match games are played with settings designed to utilize a full gpu rather than aiming for accuracy like training games.
+	// So parallelism of 2 should be plenty.
+	c.launch(candidatePath, baselinePath, params /* input= */, false, 2)
 	trainDirHolder := make([]string, 1)
 	trainDirHolder[0] = ""
 	defer func() {
@@ -569,7 +576,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
 	c := createCmdWrapper()
-	c.launch(networkPath, otherNetPath, params /* input= */, false)
+	c.launch(networkPath, otherNetPath, params /* input= */, false, 0)
 	trainDirHolder := make([]string, 1)
 	trainDirHolder[0] = ""
 	defer func() {
