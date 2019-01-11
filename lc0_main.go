@@ -665,7 +665,6 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 	return path, err
 }
 
-
 func removeAllExcept(dir string, sha string, keepTime string) error {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -783,7 +782,9 @@ func nextGame(httpClient *http.Client, count int) error {
 		if *keep {
 			keepTime = inf
 		} else if keepTime == "" {
-			keepTime = "0s"
+			// Four hours should be enough for clients serving 2 parallel runs in
+			// the same directory, even after one or two failed failed promotions.
+			keepTime = "4h"
 		}
 		networkPath, err := getNetwork(httpClient, nextGame.Sha, keepTime)
 		if err != nil {
