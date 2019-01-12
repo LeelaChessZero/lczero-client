@@ -55,6 +55,7 @@ var (
 	runId         = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
+	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
 )
 
 // Settings holds username and password.
@@ -107,10 +108,11 @@ func readSettings(path string) (string, string) {
 
 func getExtraParams() map[string]string {
 	return map[string]string{
-		"user":     *user,
-		"password": *password,
-		"version":  "20",
-		"token":    strconv.Itoa(randId),
+		"user":       *user,
+		"password":   *password,
+		"version":    "20",
+		"token":      strconv.Itoa(randId),
+		"train_only": strconv.FormatBool(*trainOnly),
 	}
 }
 
@@ -778,7 +780,7 @@ func nextGame(httpClient *http.Client, count int) error {
 	}
 
 	if nextGame.Type == "train" {
-		keepTime := nextGame.KeepTime;
+		keepTime := nextGame.KeepTime
 		if *keep {
 			keepTime = inf
 		} else if keepTime == "" {
