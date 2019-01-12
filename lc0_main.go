@@ -63,6 +63,8 @@ type Settings struct {
 	Pass string
 }
 
+const inf = "inf"
+
 /*
 	Reads the user and password from a config file and returns empty strings if anything went wrong.
 	If the config file does not exists, it prompts the user for a username and password and creates the config file.
@@ -663,13 +665,17 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 	return path, err
 }
 
-func removeAllExcept(dir string, sha string) error {
+func removeAllExcept(dir string, sha string, keepTime string) error {
 	files, err := ioutil.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 	for _, file := range files {
 		if file.Name() == sha {
+			continue
+		}
+		timeLimit, _ := time.ParseDuration(keepTime)
+		if time.Since(file.ModTime()) < timeLimit {
 			continue
 		}
 		fmt.Printf("Removing %v\n", file.Name())
@@ -693,14 +699,14 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 	return lock, err
 }
 
-func getNetwork(httpClient *http.Client, sha string, clearOld bool) (string, error) {
+func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "networks"
 	os.MkdirAll(dir, os.ModePerm)
 	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
-		if clearOld {
-			err := removeAllExcept(dir, sha)
+		if keepTime != inf {
+			err := removeAllExcept(dir, sha, keepTime)
 			if err != nil {
 				log.Printf("Failed to remove old network(s): %v", err)
 			}
@@ -753,11 +759,11 @@ func nextGame(httpClient *http.Client, count int) error {
 
 	if nextGame.Type == "match" {
 		log.Println("Getting networks for match")
-		networkPath, err := getNetwork(httpClient, nextGame.Sha, false)
+		networkPath, err := getNetwork(httpClient, nextGame.Sha, inf)
 		if err != nil {
 			return err
 		}
-		candidatePath, err := getNetwork(httpClient, nextGame.CandidateSha, false)
+		candidatePath, err := getNetwork(httpClient, nextGame.CandidateSha, inf)
 		if err != nil {
 			return err
 		}
@@ -772,13 +778,21 @@ func nextGame(httpClient *http.Client, count int) error {
 	}
 
 	if nextGame.Type == "train" {
-		networkPath, err := getNetwork(httpClient, nextGame.Sha, !*keep)
+		keepTime := nextGame.KeepTime;
+		if *keep {
+			keepTime = inf
+		} else if keepTime == "" {
+			// Four hours should be enough for clients serving 2 parallel runs in
+			// the same directory, even after one or two failed failed promotions.
+			keepTime = "4h"
+		}
+		networkPath, err := getNetwork(httpClient, nextGame.Sha, keepTime)
 		if err != nil {
 			return err
 		}
 		otherNetPath := ""
 		if nextGame.CandidateSha != "" {
-			otherNetPath, err = getNetwork(httpClient, nextGame.CandidateSha, false)
+			otherNetPath, err = getNetwork(httpClient, nextGame.CandidateSha, inf)
 			if err != nil {
 				return err
 			}
@@ -804,7 +818,7 @@ func nextGame(httpClient *http.Client, count int) error {
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
 					if ng.Type == "match" {
 						// Prefetch the next net before terminating game.
-						getNetwork(httpClient, ng.CandidateSha, false)
+						getNetwork(httpClient, ng.CandidateSha, inf)
 					}
 					pendingNextGame = &ng
 					return
