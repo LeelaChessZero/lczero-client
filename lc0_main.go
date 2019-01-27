@@ -255,7 +255,7 @@ func checkLc0() {
 	}
 }
 
-func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
+func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool, parallelismLimitOverride int) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
 	// Add the "selfplay" or "uci" part first
@@ -272,6 +272,11 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
 	parallelism := *parallel
+	if parallelismLimitOverride > 0 {
+		if parallelism <= 0 || parallelism > parallelismLimitOverride {
+			parallelism = parallelismLimitOverride
+		}
+	}
 	if *backopts != "" {
 		// Check agains small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
@@ -429,7 +434,10 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 		params = append(params, "--visits=800")
 	}
 	c := createCmdWrapper()
-	c.launch(candidatePath, baselinePath, params /* input= */, false)
+	// Enforce a parallelism of at most 4 for match games - to reduce the level of 'short game' bias.
+	// Match games use parameter settings that utilize more gpu than a single game in training,
+	// so 4 should be enough to get decent saturation.
+	c.launch(candidatePath, baselinePath, params /* input= */, false, 4)
 	trainDirHolder := make([]string, 1)
 	trainDirHolder[0] = ""
 	defer func() {
@@ -581,7 +589,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	params = append([]string{"selfplay"}, params...)
 	params = append(params, "--training=true")
 	c := createCmdWrapper()
-	c.launch(networkPath, otherNetPath, params /* input= */, false)
+	c.launch(networkPath, otherNetPath, params /* input= */, false, 0)
 	trainDirHolder := make([]string, 1)
 	trainDirHolder[0] = ""
 	defer func() {
