@@ -419,7 +419,15 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	params = append([]string{"selfplay"}, params...)
 	// Training flag used for simplicity for now.
 	params = append(params, "--training=true")
-	params = append(params, "--visits=800")
+	hasVisitsParam := false
+	for i := range params {
+		if strings.HasPrefix(params[i], "--visits=") || strings.HasPrefix(params[i], "--playouts=") {
+			hasVisitsParam = true
+		}
+	}
+	if !hasVisitsParam {
+		params = append(params, "--visits=800")
+	}
 	c := createCmdWrapper()
 	c.launch(candidatePath, baselinePath, params /* input= */, false)
 	trainDirHolder := make([]string, 1)
