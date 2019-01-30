@@ -753,6 +753,7 @@ func getBook(httpClient *http.Client, book_url string) (string, error) {
 	os.MkdirAll(dir, os.ModePerm)
 	u, err := url.Parse(book_url)
 	if err != nil {
+		log.Println("Unable to parse book URL")
 		return "", err
 	}
 	s := strings.Split(u.Path, "/")
@@ -782,11 +783,13 @@ func getBook(httpClient *http.Client, book_url string) (string, error) {
 
 	r, err := httpClient.Get(book_url)
 	if err != nil {
+		log.Println("Book download failed")
 		return "", err
 	}
 
 	out, err := ioutil.TempFile(dir, book_name + "_tmp")
 	if err != nil {
+		log.Println("Unable to create temporary file")
 		return "", err
 	}
 
