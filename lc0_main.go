@@ -161,7 +161,9 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 	}
 
 	totalGames++
-	log.Printf("Completed %d games in %s time", totalGames, time.Since(startTime))
+	var duration = time.Since(startTime).Hours()
+	var speed = float64(totalGames) / duration * 24
+	log.Printf("Completed %d games in %s time (%f games/day)", totalGames, duration, speed)
 
 	err := os.Remove(path)
 	if err != nil {
