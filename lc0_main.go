@@ -41,6 +41,7 @@ var (
 	hasCudnnFp16    bool
 	hasOpenCL       bool
 	hasBlas         bool
+	testedCudnnFp16 bool
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -449,7 +450,6 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	var pendingNextGame *client.NextGameResponse
-	totalMatches := 0
 	go func() {
 		defer wg.Done()
 		defer close(doneCh)
@@ -535,7 +535,7 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 		case gi, ok := <-c.gi:
 			if !ok {
 				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && totalMatches == 0 && *backopts == "" {
+				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
 					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
 					hasCudnnFp16 = false
 					close(reverseDoneCh)
@@ -545,7 +545,7 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 				done = true
 				break
 			}
-			totalMatches++
+			testedCudnnFp16 = true
 			progressOrKill = true
 			trainDirHolder[0] = path.Dir(gi.fname)
 			wg.Add(1)
@@ -616,7 +616,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 		case gi, ok := <-c.gi:
 			if !ok {
 				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && totalGames == 0 && *backopts == "" {
+				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
 					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
 					hasCudnnFp16 = false
 					return errors.New("retry")
@@ -625,6 +625,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 				done = true
 				break
 			}
+			testedCudnnFp16 = true;
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
