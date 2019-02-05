@@ -380,15 +380,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
 				c.BestMove <- strings.Split(line, " ")[1]
-			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
-				c.Version = strings.Split(line, " ")[6]
-				fmt.Println(line)
+				testedCudnnFp16 = true
 			case strings.HasPrefix(line, "id name Lc0 "):
 				c.Version = strings.Split(line, " ")[3]
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
-				break
-				fallthrough
+				testedCudnnFp16 = true
 			default:
 				fmt.Println(line)
 			}
