@@ -391,6 +391,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				if cc >= 7.5 {
 					testedCudnnFp16 = true
 				}
+				fallthrough
 			default:
 				fmt.Println(line)
 			}
