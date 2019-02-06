@@ -379,13 +379,18 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				last_fp_threshold = -1.0
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
-				c.BestMove <- strings.Split(line, " ")[1]
 				testedCudnnFp16 = true
+				c.BestMove <- strings.Split(line, " ")[1]
 			case strings.HasPrefix(line, "id name Lc0 "):
 				c.Version = strings.Split(line, " ")[3]
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				testedCudnnFp16 = true
+			case strings.HasPrefix(line, "GPU compute capability:"):
+				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
+				if cc >= 7.5 {
+					testedCudnnFp16 = true
+				}
 			default:
 				fmt.Println(line)
 			}
@@ -622,7 +627,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 				done = true
 				break
 			}
-			testedCudnnFp16 = true;
+			testedCudnnFp16 = true
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
