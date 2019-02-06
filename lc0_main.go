@@ -388,7 +388,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				testedCudnnFp16 = true
 			case strings.HasPrefix(line, "GPU compute capability:"):
 				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
-				if cc >= 7.5 {
+				if cc >= 7.0 {
 					testedCudnnFp16 = true
 				}
 				fallthrough
