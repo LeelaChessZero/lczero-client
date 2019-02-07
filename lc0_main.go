@@ -719,16 +719,16 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "networks"
+	if keepTime != inf {
+		err := removeAllExcept(dir, sha, keepTime)
+		if err != nil {
+			log.Printf("Failed to remove old network(s): %v", err)
+		}
+	}
 	os.MkdirAll(dir, os.ModePerm)
 	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
-		if keepTime != inf {
-			err := removeAllExcept(dir, sha, keepTime)
-			if err != nil {
-				log.Printf("Failed to remove old network(s): %v", err)
-			}
-		}
 		return path, nil
 	}
 
@@ -887,11 +887,11 @@ func maybeSetTrainOnly() {
 	found := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "train-only" {
-			found = true;
+			found = true
 		}
 	})
 	if !found && !hasCudnn && !hasCudnnFp16 {
-		*trainOnly = true;
+		*trainOnly = true
 		log.Println("Will only run training games, use -train-only=false to override")
 	}
 }
