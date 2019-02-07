@@ -41,11 +41,12 @@ var (
 	hasCudnnFp16    bool
 	hasOpenCL       bool
 	hasBlas         bool
+	testedCudnnFp16 bool
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
-	gpu      = flag.Int("gpu", 0, "GPU to use (default 0, ignored if --backend-opts used)")
+	gpu      = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
 	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -272,6 +273,10 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		c.Cmd.Args = append(c.Cmd.Args, parts...)
 	}
 	parallelism := *parallel
+	sGpu := ""
+	if *gpu >= 0 {
+		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
+	}
 	if *backopts != "" {
 		// Check agains small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
@@ -283,14 +288,14 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
 	} else if hasCudnnFp16 {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16,gpu=%v", *gpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16%v", sGpu))
 		if parallelism <= 0 {
 			parallelism = 32
 		}
 	} else if hasCudnn {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn,gpu=%v", *gpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
 	} else if hasOpenCL {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl,gpu=%v", *gpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
 	if parallelism > 0 && mode == "selfplay" {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--parallelism=%v", parallelism))
@@ -378,15 +383,18 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				last_fp_threshold = -1.0
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
+				testedCudnnFp16 = true
 				c.BestMove <- strings.Split(line, " ")[1]
-			case strings.HasPrefix(line, "id name The Lc0 chess engine. "):
-				c.Version = strings.Split(line, " ")[6]
-				fmt.Println(line)
 			case strings.HasPrefix(line, "id name Lc0 "):
 				c.Version = strings.Split(line, " ")[3]
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
-				break
+				testedCudnnFp16 = true
+			case strings.HasPrefix(line, "GPU compute capability:"):
+				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
+				if cc >= 7.0 {
+					testedCudnnFp16 = true
+				}
 				fallthrough
 			default:
 				fmt.Println(line)
@@ -449,7 +457,6 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	var pendingNextGame *client.NextGameResponse
-	totalMatches := 0
 	go func() {
 		defer wg.Done()
 		defer close(doneCh)
@@ -535,7 +542,7 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 		case gi, ok := <-c.gi:
 			if !ok {
 				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && totalMatches == 0 && *backopts == "" {
+				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
 					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
 					hasCudnnFp16 = false
 					close(reverseDoneCh)
@@ -545,7 +552,7 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 				done = true
 				break
 			}
-			totalMatches++
+			testedCudnnFp16 = true
 			progressOrKill = true
 			trainDirHolder[0] = path.Dir(gi.fname)
 			wg.Add(1)
@@ -616,7 +623,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 		case gi, ok := <-c.gi:
 			if !ok {
 				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && totalGames == 0 && *backopts == "" {
+				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
 					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
 					hasCudnnFp16 = false
 					return errors.New("retry")
@@ -625,6 +632,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 				done = true
 				break
 			}
+			testedCudnnFp16 = true
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
