@@ -201,7 +201,7 @@ func (c *cmdWrapper) openInput() {
 	}
 }
 
-func convertMovesToPGN(moves []string) string {
+func convertMovesToPGN(moves []string, result string) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
 	for _, m := range moves {
 		err := game.MoveStr(m)
@@ -216,6 +216,16 @@ func convertMovesToPGN(moves []string) string {
 	b, err := game.MarshalText()
 	if err != nil {
 		log.Fatalf("MarshalText failed: %v", err)
+	}
+	b_str := string(b)
+	if strings.HasSuffix(b_str, " *") && result != "" {
+		to_append := "1/2-1/2"
+		if result == "whitewon" {
+			to_append = "1-0"
+		} else if result == "blackwon" {
+			to_append = "0-1"
+		}	
+		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
 	return game2.String()
@@ -377,7 +387,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 					player = line[idx4+8 : idx5-1]
 				}
 				file := line[idx1+13 : idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "))
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result)
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold, player1: player, result: result}
 				last_fp_threshold = -1.0
