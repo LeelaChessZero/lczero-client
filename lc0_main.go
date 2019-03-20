@@ -719,13 +719,13 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "networks"
+	os.MkdirAll(dir, os.ModePerm)
 	if keepTime != inf {
 		err := removeAllExcept(dir, sha, keepTime)
 		if err != nil {
 			log.Printf("Failed to remove old network(s): %v", err)
 		}
 	}
-	os.MkdirAll(dir, os.ModePerm)
 	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
