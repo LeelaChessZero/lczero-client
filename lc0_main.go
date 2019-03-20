@@ -730,15 +730,15 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "networks"
 	os.MkdirAll(dir, os.ModePerm)
+	if keepTime != inf {
+		err := removeAllExcept(dir, sha, keepTime)
+		if err != nil {
+			log.Printf("Failed to remove old network(s): %v", err)
+		}
+	}
 	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
-		if keepTime != inf {
-			err := removeAllExcept(dir, sha, keepTime)
-			if err != nil {
-				log.Printf("Failed to remove old network(s): %v", err)
-			}
-		}
 		return path, nil
 	}
 
@@ -893,6 +893,19 @@ func hideLc0argsFlag() {
 	}
 }
 
+func maybeSetTrainOnly() {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "train-only" {
+			found = true
+		}
+	})
+	if !found && !hasCudnn && !hasCudnnFp16 {
+		*trainOnly = true
+		log.Println("Will only run training games, use -train-only=false to override")
+	}
+}
+
 func main() {
 	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
 
@@ -906,6 +919,8 @@ func main() {
 	}
 
 	checkLc0()
+
+	maybeSetTrainOnly()
 
 	// 640 ought to be enough for anybody.
 	if *runId > 640 {
