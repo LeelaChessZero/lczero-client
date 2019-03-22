@@ -111,7 +111,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "21",
+		"version":    "22",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 	}
@@ -201,7 +201,7 @@ func (c *cmdWrapper) openInput() {
 	}
 }
 
-func convertMovesToPGN(moves []string) string {
+func convertMovesToPGN(moves []string, result string) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
 	for _, m := range moves {
 		err := game.MoveStr(m)
@@ -216,6 +216,16 @@ func convertMovesToPGN(moves []string) string {
 	b, err := game.MarshalText()
 	if err != nil {
 		log.Fatalf("MarshalText failed: %v", err)
+	}
+	b_str := string(b)
+	if strings.HasSuffix(b_str, " *") && result != "" {
+		to_append := "1/2-1/2"
+		if result == "whitewon" {
+			to_append = "1-0"
+		} else if result == "blackwon" {
+			to_append = "0-1"
+		}	
+		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
 	return game2.String()
@@ -377,7 +387,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 					player = line[idx4+8 : idx5-1]
 				}
 				file := line[idx1+13 : idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "))
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result)
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold, player1: player, result: result}
 				last_fp_threshold = -1.0
@@ -720,15 +730,15 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "networks"
 	os.MkdirAll(dir, os.ModePerm)
+	if keepTime != inf {
+		err := removeAllExcept(dir, sha, keepTime)
+		if err != nil {
+			log.Printf("Failed to remove old network(s): %v", err)
+		}
+	}
 	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
-		if keepTime != inf {
-			err := removeAllExcept(dir, sha, keepTime)
-			if err != nil {
-				log.Printf("Failed to remove old network(s): %v", err)
-			}
-		}
 		return path, nil
 	}
 
@@ -883,6 +893,19 @@ func hideLc0argsFlag() {
 	}
 }
 
+func maybeSetTrainOnly() {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "train-only" {
+			found = true
+		}
+	})
+	if !found && !hasCudnn && !hasCudnnFp16 {
+		*trainOnly = true
+		log.Println("Will only run training games, use -train-only=false to override")
+	}
+}
+
 func main() {
 	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
 
@@ -896,6 +919,8 @@ func main() {
 	}
 
 	checkLc0()
+
+	maybeSetTrainOnly()
 
 	// 640 ought to be enough for anybody.
 	if *runId > 640 {
