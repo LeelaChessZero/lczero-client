@@ -57,6 +57,7 @@ var (
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
+	targetGames   = flag.Int("num-games", 0, "Only play this many games")
 )
 
 // Settings holds username and password.
@@ -224,7 +225,7 @@ func convertMovesToPGN(moves []string, result string) string {
 			to_append = "1-0"
 		} else if result == "blackwon" {
 			to_append = "0-1"
-		}	
+		}
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
@@ -952,10 +953,12 @@ func main() {
 
 	httpClient := &http.Client{}
 	startTime = time.Now()
-	for i := 0; ; i++ {
+	for i := 0; *targetGames == 0 || i < *targetGames; i++ {
 		err := nextGame(httpClient, i)
 		if err != nil {
 			if err.Error() == "retry" {
+				// Decrease game count as this one didn't work
+				i--
 				time.Sleep(1 * time.Second)
 				continue
 			}
@@ -965,4 +968,5 @@ func main() {
 			continue
 		}
 	}
+	log.Print("Target number of games reached")
 }
