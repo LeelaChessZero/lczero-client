@@ -645,12 +645,11 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 			testedCudnnFp16 = true
 			fmt.Printf("Uploading game: %d\n", numGames)
-			numGames++
-
-			if numGames > *targetGames {
+			if numGames == *targetGames {
 				done = true
+				c.Cmd.Process.Kill()
 			}
-
+			numGames++
 			progressOrKill = true
 			trainDirHolder[0] = path.Dir(gi.fname)
 			log.Printf("trainDir=%s", trainDirHolder[0])
@@ -962,8 +961,6 @@ func main() {
 		err := nextGame(httpClient, i)
 		if err != nil {
 			if err.Error() == "retry" {
-				// Decrease game count as this one didn't work
-				i--
 				time.Sleep(1 * time.Second)
 				continue
 			}
