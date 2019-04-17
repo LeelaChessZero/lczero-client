@@ -943,6 +943,11 @@ func main() {
 		*hostname = "http://testserver.lczero.org"
 	}
 
+	if !*trainOnly && *targetGames != 0 {
+		log.Println("num-games is not compatable with matches. Playing infinite games instead.")
+		*targetGames = 0
+	}
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if len(*user) == 0 || len(*password) == 0 {
 		*user, *password = readSettings("settings.json")
