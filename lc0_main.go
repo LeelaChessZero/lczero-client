@@ -728,7 +728,7 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 }
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
-	dir := "networks"
+	dir := "client_networks"
 	os.MkdirAll(dir, os.ModePerm)
 	if keepTime != inf {
 		err := removeAllExcept(dir, sha, keepTime)
