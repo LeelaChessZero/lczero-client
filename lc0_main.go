@@ -156,7 +156,13 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 		}
 		resp.Body.Close()
 		if resp.StatusCode != 200 && strings.Contains(body.String(), " upgrade ") {
-			log.Fatal("The lc0 version you are using is not accepted by the server")
+			log.Printf("The lc0 version you are using is not accepted by the server")
+			if strings.Contains(version, "dev") {
+				log.Printf("It is an unreleased development version")
+			} else if strings.Contains(version, "rc") {
+				log.Printf("It is a release candidate")
+			}
+			log.Fatal("You probably need the latest release")
 		}
 		break
 	}
@@ -341,6 +347,9 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			line := stdoutScanner.Text()
 			//			fmt.Printf("lc0: %s\n", line)
 			switch {
+			case strings.HasPrefix(line, "Unknown command line flag"):
+				fmt.Println(line)
+				log.Fatal("You probably have an old lc0 version")
 			case strings.Contains(line, "Your GPU doesn't support FP16"):
 				log.Println("GPU doesn't support the cudnn-fp16 backend")
 				if *backopts == "" {
