@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -776,6 +777,63 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	return checkValidNetwork(dir, sha)
 }
 
+func getBook(httpClient *http.Client, book_url string) (string, error) {
+	dir := "books"
+	os.MkdirAll(dir, os.ModePerm)
+	u, err := url.Parse(book_url)
+	if err != nil {
+		log.Println("Unable to parse book URL")
+		return "", err
+	}
+	s := strings.Split(u.Path, "/")
+	book_name := s[len(s)-1]
+	path := filepath.Join(dir, book_name)
+	_, err = os.Stat(path)
+	if err == nil {
+		// Book is there, use it.
+		return path, nil
+	}
+
+	// Otherwise, let's download it
+	lock, err := acquireLock(dir, book_name)
+
+	if err != nil {
+		if err == lockfile.ErrBusy {
+			log.Println("Book download initiated by other client")
+			return "", err
+		} else {
+			log.Fatalf("Unable to lock: %v", err)
+		}
+	}
+
+	// Lockfile acquired, download it
+	defer lock.Unlock()
+	fmt.Println("Downloading book...")
+
+	r, err := httpClient.Get(book_url)
+	if err != nil {
+		log.Println("Book download failed")
+		return "", err
+	}
+
+	out, err := ioutil.TempFile(dir, book_name + "_tmp")
+	if err != nil {
+		log.Println("Unable to create temporary file")
+		return "", err
+	}
+
+	_, err = io.Copy(out, r.Body)
+	r.Body.Close()
+	out.Close()
+	if err == nil {
+		err = os.Rename(out.Name(), path)
+	}
+	// Ensure tmpfile is erased
+	os.Remove(out.Name())
+
+	return path, err
+}
+
 func nextGame(httpClient *http.Client, count int) error {
 	var nextGame client.NextGameResponse
 	var err error
@@ -795,6 +853,13 @@ func nextGame(httpClient *http.Client, count int) error {
 		return err
 	}
 	log.Printf("serverParams: %s", serverParams)
+
+	if nextGame.BookUrl != "" {
+		_, err := getBook(&http.Client{}, nextGame.BookUrl)
+		if err != nil {
+			return err
+		}
+	}
 
 	if nextGame.Type == "match" {
 		log.Println("Getting networks for match")
