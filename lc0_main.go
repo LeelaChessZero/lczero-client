@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
+        "crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -690,8 +691,15 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 	if err == nil {
 		file, _ := os.Open(path)
 		reader, err := gzip.NewReader(file)
-		if err == nil {
-			_, err = ioutil.ReadAll(reader)
+                if err == nil {
+			var bytes []byte
+			bytes, err = ioutil.ReadAll(reader)
+			sum := sha256.Sum256(bytes)
+			got := fmt.Sprintf("%x", sum)
+			if sha != got {
+				text := fmt.Sprintf("sha mismatch want:\n%s\ngot\n%s\n", sha, got)
+				err = errors.New(text)
+			}
 		}
 		file.Close()
 		if err != nil {
