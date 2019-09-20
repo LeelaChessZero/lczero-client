@@ -44,6 +44,7 @@ var (
 	hasOpenCL       bool
 	hasBlas         bool
 	testedCudnnFp16 bool
+	skippedGames    int
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -59,6 +60,7 @@ var (
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
+	skip          = flag.Int("skip", 0, "")
 )
 
 // Settings holds username and password.
@@ -656,6 +658,16 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 				break
 			}
 			testedCudnnFp16 = true
+			skippedGames++
+			if skippedGames <= *skip {
+				fmt.Printf("Skipping game %d of %d\n", skippedGames, *skip)
+				err := os.Remove(gi.fname)
+				if err != nil {
+					log.Printf("Failed to remove training file: %v", err)
+				}
+				continue
+			}
+			skippedGames = 0
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
@@ -964,10 +976,10 @@ func testEP() {
 	}
 }
 
-func hideLc0argsFlag() {
+func hideFlags() {
 	shown := new(flag.FlagSet)
 	flag.VisitAll(func(f *flag.Flag) {
-		if f.Name != "lc0args" {
+		if f.Name != "lc0args" && f.Name != "skip" {
 			shown.Var(f.Value, f.Name, f.Usage)
 		}
 	})
@@ -995,7 +1007,7 @@ func main() {
 
 	testEP()
 
-	hideLc0argsFlag()
+	hideFlags()
 	flag.Parse()
 
 	if *version {
