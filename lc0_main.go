@@ -211,7 +211,7 @@ func (c *cmdWrapper) openInput() {
 	}
 }
 
-func convertMovesToPGN(moves []string, result string) string {
+func convertMovesToPGN(moves []string, result string, start_ply_count int) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
 	for _, m := range moves {
 		err := game.MoveStr(m)
@@ -238,7 +238,7 @@ func convertMovesToPGN(moves []string, result string) string {
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
-	return game2.String()
+	return game2.String() + " {TDS: " + strconv.Itoa(start_ply_count) + "}"
 }
 
 func createCmdWrapper() *cmdWrapper {
@@ -389,6 +389,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				}
 				idx4 := strings.LastIndex(line, "player1")
 				idx5 := strings.LastIndex(line, "result")
+				idx6 := strings.LastIndex(line, "play_start_ply")
 				result := ""
 				if idx5 < 0 {
 					idx5 = idx3
@@ -399,8 +400,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				if idx4 >= 0 {
 					player = line[idx4+8 : idx5-1]
 				}
+				start_ply_count := -1
+				if idx6 >= 0 {
+					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4 - 1])
+				}
 				file := line[idx1+13 : idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result)
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold, player1: player, result: result}
 				last_fp_threshold = -1.0
