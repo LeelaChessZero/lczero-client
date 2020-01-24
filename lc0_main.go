@@ -238,7 +238,7 @@ func convertMovesToPGN(moves []string, result string, start_ply_count int) strin
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
-	return game2.String() + " {TDS: " + strconv.Itoa(start_ply_count) + "}"
+	return game2.String() + " {OL: " + strconv.Itoa(start_ply_count) + "}"
 }
 
 func createCmdWrapper() *cmdWrapper {
