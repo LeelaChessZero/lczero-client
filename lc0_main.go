@@ -62,7 +62,8 @@ var (
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
-	stats         = flag.Bool("stats", false, "Send system info to server for more fine-grained statistics")
+	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
+	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
 )
 
 // Settings holds username and password.
@@ -421,17 +422,17 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "info"):
 				testedCudnnFp16 = true
 			case strings.HasPrefix(line, "GPU: "):
-				if *stats && *backopts == "" {
+				if *report_gpu && *backopts == "" {
 					gpuType = strings.TrimPrefix(line, "GPU: ")
 				}
 				fmt.Println(line)
 			case strings.HasPrefix(line, "Selected device: "):
-				if *stats && *backopts == "" {
+				if *report_gpu && *backopts == "" {
 					gpuType = strings.TrimPrefix(line, "Selected device: ")
 				}
 				fmt.Println(line)
 			case strings.HasPrefix(line, "BLAS"):
-				if *stats && *backopts == "" {
+				if *report_gpu && *backopts == "" {
 					gpuType = "None"
 				}
 				fmt.Println(line)
@@ -1056,7 +1057,7 @@ func main() {
 		log.Fatal("You must specify a non-empty password")
 	}
 
-	if *stats {
+	if *report_host {
 		s, err := os.Hostname()
 		if err == nil {
 			localHost = s
