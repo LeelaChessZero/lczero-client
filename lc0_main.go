@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
-        "crypto/sha256"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -45,6 +45,9 @@ var (
 	hasBlas         bool
 	testedCudnnFp16 bool
 
+	localHost = "Unknown"
+	gpuType   = "Unknown"
+
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
@@ -59,6 +62,8 @@ var (
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
+	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
+	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
 )
 
 // Settings holds username and password.
@@ -116,6 +121,9 @@ func getExtraParams() map[string]string {
 		"version":    "24",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
+		"hostname":   localHost,
+		"gpu":        gpuType,
+		"gpu_id":     strconv.Itoa(*gpu),
 	}
 }
 
@@ -418,6 +426,21 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				testedCudnnFp16 = true
+			case strings.HasPrefix(line, "GPU: "):
+				if *report_gpu && *backopts == "" {
+					gpuType = strings.TrimPrefix(line, "GPU: ")
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "Selected device: "):
+				if *report_gpu && *backopts == "" {
+					gpuType = strings.TrimPrefix(line, "Selected device: ")
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "BLAS"):
+				if *report_gpu && *backopts == "" {
+					gpuType = "None"
+				}
+				fmt.Println(line)
 			case strings.HasPrefix(line, "GPU compute capability:"):
 				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
 				if cc >= 7.0 {
@@ -1037,6 +1060,13 @@ func main() {
 	}
 	if len(*password) == 0 {
 		log.Fatal("You must specify a non-empty password")
+	}
+
+	if *report_host {
+		s, err := os.Hostname()
+		if err == nil {
+			localHost = s
+		}
 	}
 
 	httpClient := &http.Client{}
