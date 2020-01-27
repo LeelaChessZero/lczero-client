@@ -43,6 +43,7 @@ var (
 	hasCudnnFp16    bool
 	hasOpenCL       bool
 	hasBlas         bool
+	hasDx           bool
 	testedCudnnFp16 bool
 
 	localHost = "Unknown"
@@ -270,6 +271,9 @@ func checkLc0() {
 	if bytes.Contains(out, []byte("blas")) {
 		hasBlas = true
 	}
+	if bytes.Contains(out, []byte("dx")) {
+		hasDx = true
+	}
 	if bytes.Contains(out, []byte("cudnn-fp16")) {
 		hasCudnnFp16 = true
 	}
@@ -322,6 +326,11 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		}
 	} else if hasCudnn {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
+	} else if hasDx {
+		if !hasBlas {
+			log.Fatalf("Dx backend cannot be validated")
+		}
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,dx,fp16=false%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
@@ -441,6 +450,9 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 					gpuType = "None"
 				}
 				fmt.Println(line)
+			case strings.HasPrefix(line, "*** ERROR check failed"):
+				fmt.Println(line)
+				log.Fatal("The dx backend failed the self check - try updating gpu drivers")
 			case strings.HasPrefix(line, "GPU compute capability:"):
 				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
 				if cc >= 7.0 {
