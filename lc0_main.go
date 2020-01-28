@@ -330,7 +330,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		if !hasBlas {
 			log.Fatalf("Dx backend cannot be validated")
 		}
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,dx,fp16=false%v)", sGpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,atol=5e-1,dx%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
