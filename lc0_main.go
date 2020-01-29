@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
-        "crypto/sha256"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -43,7 +43,11 @@ var (
 	hasCudnnFp16    bool
 	hasOpenCL       bool
 	hasBlas         bool
+	hasDx           bool
 	testedCudnnFp16 bool
+
+	localHost = "Unknown"
+	gpuType   = "Unknown"
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
@@ -59,6 +63,8 @@ var (
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
+	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
+	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
 )
 
 // Settings holds username and password.
@@ -113,9 +119,12 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "23",
+		"version":    "24",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
+		"hostname":   localHost,
+		"gpu":        gpuType,
+		"gpu_id":     strconv.Itoa(*gpu),
 	}
 }
 
@@ -211,7 +220,7 @@ func (c *cmdWrapper) openInput() {
 	}
 }
 
-func convertMovesToPGN(moves []string, result string) string {
+func convertMovesToPGN(moves []string, result string, start_ply_count int) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
 	for _, m := range moves {
 		err := game.MoveStr(m)
@@ -238,7 +247,7 @@ func convertMovesToPGN(moves []string, result string) string {
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
-	return game2.String()
+	return game2.String() + " {OL: " + strconv.Itoa(start_ply_count) + "}"
 }
 
 func createCmdWrapper() *cmdWrapper {
@@ -261,6 +270,9 @@ func checkLc0() {
 	}
 	if bytes.Contains(out, []byte("blas")) {
 		hasBlas = true
+	}
+	if bytes.Contains(out, []byte("dx")) {
+		hasDx = true
 	}
 	if bytes.Contains(out, []byte("cudnn-fp16")) {
 		hasCudnnFp16 = true
@@ -314,6 +326,11 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		}
 	} else if hasCudnn {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
+	} else if hasDx {
+		if !hasBlas {
+			log.Fatalf("Dx backend cannot be validated")
+		}
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,atol=5e-1,dx%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
@@ -389,6 +406,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				}
 				idx4 := strings.LastIndex(line, "player1")
 				idx5 := strings.LastIndex(line, "result")
+				idx6 := strings.LastIndex(line, "play_start_ply")
 				result := ""
 				if idx5 < 0 {
 					idx5 = idx3
@@ -399,8 +417,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				if idx4 >= 0 {
 					player = line[idx4+8 : idx5-1]
 				}
+				start_ply_count := -1
+				if idx6 >= 0 {
+					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4 - 1])
+				}
 				file := line[idx1+13 : idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result)
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold, player1: player, result: result}
 				last_fp_threshold = -1.0
@@ -413,6 +435,24 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				testedCudnnFp16 = true
+			case strings.HasPrefix(line, "GPU: "):
+				if *report_gpu && *backopts == "" {
+					gpuType = strings.TrimPrefix(line, "GPU: ")
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "Selected device: "):
+				if *report_gpu && *backopts == "" {
+					gpuType = strings.TrimPrefix(line, "Selected device: ")
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "BLAS"):
+				if *report_gpu && *backopts == "" {
+					gpuType = "None"
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "*** ERROR check failed"):
+				fmt.Println(line)
+				log.Fatal("The dx backend failed the self check - try updating gpu drivers")
 			case strings.HasPrefix(line, "GPU compute capability:"):
 				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
 				if cc >= 7.0 {
@@ -1032,6 +1072,13 @@ func main() {
 	}
 	if len(*password) == 0 {
 		log.Fatal("You must specify a non-empty password")
+	}
+
+	if *report_host {
+		s, err := os.Hostname()
+		if err == nil {
+			localHost = s
+		}
 	}
 
 	httpClient := &http.Client{}
