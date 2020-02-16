@@ -46,7 +46,7 @@ var (
 	hasDx           bool
 	testedCudnnFp16 bool
 
-	localHost = flag.String("localhost", "Unknown", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json and report-host)")
+	localHost = flag.String("localhost", "Unknown", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
 	gpuType   = "Unknown"
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
@@ -1080,7 +1080,7 @@ func main() {
 		log.Fatal("You must specify a non-empty password")
 	}
 
-	if *report_host {
+	if *report_host && *localHost == "Unknown" {
 		s, err := os.Hostname()
 		if err == nil {
 			*localHost = s
