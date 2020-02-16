@@ -46,7 +46,7 @@ var (
 	hasDx           bool
 	testedCudnnFp16 bool
 
-	localHost = "Unknown"
+	localHost = flag.String("localhost", "Unknown", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json and report-host)")
 	gpuType   = "Unknown"
 
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
@@ -71,6 +71,7 @@ var (
 type Settings struct {
 	User string
 	Pass string
+	Localhost string
 }
 
 const inf = "inf"
@@ -79,7 +80,7 @@ const inf = "inf"
 	Reads the user and password from a config file and returns empty strings if anything went wrong.
 	If the config file does not exists, it prompts the user for a username and password and creates the config file.
 */
-func readSettings(path string) (string, string) {
+func readSettings(path string) (string, string, string) {
 	settings := Settings{}
 	file, err := os.Open(path)
 	if err != nil {
@@ -94,25 +95,25 @@ func readSettings(path string) (string, string) {
 		jsonSettings, err := json.Marshal(settings)
 		if err != nil {
 			log.Fatal("Cannot encode settings to JSON ", err)
-			return "", ""
+			return "", "", ""
 		}
 		settingsFile, err := os.Create(path)
 		defer settingsFile.Close()
 		if err != nil {
 			log.Fatal("Could not create output file ", err)
-			return "", ""
+			return "", "", ""
 		}
 		settingsFile.Write(jsonSettings)
-		return settings.User, settings.Pass
+	} else {
+		defer file.Close()
+		decoder := json.NewDecoder(file)
+		err = decoder.Decode(&settings)
+		if err != nil {
+			log.Fatal("Error decoding JSON ", err)
+			return "", "", ""
+		}
 	}
-	defer file.Close()
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&settings)
-	if err != nil {
-		log.Fatal("Error decoding JSON ", err)
-		return "", ""
-	}
-	return settings.User, settings.Pass
+	return settings.User, settings.Pass, settings.Localhost
 }
 
 func getExtraParams() map[string]string {
@@ -122,7 +123,7 @@ func getExtraParams() map[string]string {
 		"version":    "24",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
-		"hostname":   localHost,
+		"hostname":   *localHost,
 		"gpu":        gpuType,
 		"gpu_id":     strconv.Itoa(*gpu),
 	}
@@ -1064,7 +1065,12 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	if len(*user) == 0 || len(*password) == 0 {
-		*user, *password = readSettings("settings.json")
+		var settingsHost string
+		*user, *password, settingsHost = readSettings("settings.json")
+
+		if (len(settingsHost) != 0) {
+			*localHost = settingsHost
+		}
 	}
 
 	if len(*user) == 0 {
@@ -1077,7 +1083,7 @@ func main() {
 	if *report_host {
 		s, err := os.Hostname()
 		if err == nil {
-			localHost = s
+			*localHost = s
 		}
 	}
 
