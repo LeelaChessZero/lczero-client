@@ -46,9 +46,11 @@ var (
 	hasDx           bool
 	testedCudnnFp16 bool
 
-	localHost = flag.String("localhost", "Unknown", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
+	settingsPath = "settings.json"
+	defaultLocalHost = "Unknown"
 	gpuType   = "Unknown"
 
+	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
@@ -78,42 +80,50 @@ const inf = "inf"
 
 /*
 	Reads the user and password from a config file and returns empty strings if anything went wrong.
-	If the config file does not exists, it prompts the user for a username and password and creates the config file.
 */
 func readSettings(path string) (string, string, string) {
 	settings := Settings{}
 	file, err := os.Open(path)
 	if err != nil {
 		// File was not found
-		fmt.Printf("Please enter your username and password, an account will be automatically created.\n")
-		fmt.Printf("Note that this password will be stored in plain text, so avoid a password that is\n")
-		fmt.Printf("also used for sensitive applications. It also cannot be recovered.\n")
-		fmt.Printf("Enter username : ")
-		fmt.Scanf("%s\n", &settings.User)
-		fmt.Printf("Enter password : ")
-		fmt.Scanf("%s\n", &settings.Pass)
-		jsonSettings, err := json.Marshal(settings)
-		if err != nil {
-			log.Fatal("Cannot encode settings to JSON ", err)
-			return "", "", ""
-		}
-		settingsFile, err := os.Create(path)
-		defer settingsFile.Close()
-		if err != nil {
-			log.Fatal("Could not create output file ", err)
-			return "", "", ""
-		}
-		settingsFile.Write(jsonSettings)
-	} else {
-		defer file.Close()
-		decoder := json.NewDecoder(file)
-		err = decoder.Decode(&settings)
-		if err != nil {
-			log.Fatal("Error decoding JSON ", err)
-			return "", "", ""
-		}
+		return "", "", ""
+	}
+	defer file.Close()
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&settings)
+	if err != nil {
+		log.Fatal("Error decoding JSON ", err)
+		return "", "", ""
 	}
 	return settings.User, settings.Pass, settings.Localhost
+}
+
+/*
+	Prompts the user for a username and password and creates the config file.
+*/
+func createSettings(path string) (string, string) {
+	settings := Settings{}
+
+	fmt.Printf("Please enter your username and password, an account will be automatically created.\n")
+	fmt.Printf("Note that this password will be stored in plain text, so avoid a password that is\n")
+	fmt.Printf("also used for sensitive applications. It also cannot be recovered.\n")
+	fmt.Printf("Enter username : ")
+	fmt.Scanf("%s\n", &settings.User)
+	fmt.Printf("Enter password : ")
+	fmt.Scanf("%s\n", &settings.Pass)
+	jsonSettings, err := json.Marshal(settings)
+	if err != nil {
+		log.Fatal("Cannot encode settings to JSON ", err)
+		return "", ""
+	}
+	settingsFile, err := os.Create(path)
+	defer settingsFile.Close()
+	if err != nil {
+		log.Fatal("Could not create output file ", err)
+		return "", ""
+	}
+	settingsFile.Write(jsonSettings)
+	return settings.User, settings.Pass
 }
 
 func getExtraParams() map[string]string {
@@ -1064,13 +1074,19 @@ func main() {
 	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	if len(*user) == 0 || len(*password) == 0 {
-		var settingsHost string
-		*user, *password, settingsHost = readSettings("settings.json")
 
-		if (len(settingsHost) != 0) {
-			*localHost = settingsHost
+	settingsUser, settingsPassword, settingsHost := readSettings(settingsPath)
+	if len(*user) == 0 || len(*password) == 0 {
+		*user = settingsUser
+		*password = settingsPassword
+
+		if len(*user) == 0 || len(*password) == 0 {
+			*user, *password = createSettings(settingsPath)
 		}
+	}
+
+	if (len(settingsHost) != 0) {
+		*localHost = settingsHost
 	}
 
 	if len(*user) == 0 {
@@ -1080,11 +1096,15 @@ func main() {
 		log.Fatal("You must specify a non-empty password")
 	}
 
-	if *report_host && *localHost == "Unknown" {
+	if *report_host && len(*localHost) == 0 {
 		s, err := os.Hostname()
 		if err == nil {
 			*localHost = s
 		}
+	}
+
+	if len(*localHost) == 0 {
+		*localHost = defaultLocalHost
 	}
 
 	httpClient := &http.Client{}
