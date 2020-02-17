@@ -1085,7 +1085,7 @@ func main() {
 		}
 	}
 
-	if (len(settingsHost) != 0) {
+	if (len(settingsHost) != 0 && len(*localHost) == 0) {
 		*localHost = settingsHost
 	}
 
