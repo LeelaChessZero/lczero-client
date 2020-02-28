@@ -46,9 +46,11 @@ var (
 	hasDx           bool
 	testedCudnnFp16 bool
 
-	localHost = "Unknown"
+	settingsPath = "settings.json"
+	defaultLocalHost = "Unknown"
 	gpuType   = "Unknown"
 
+	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
@@ -71,47 +73,56 @@ var (
 type Settings struct {
 	User string
 	Pass string
+	Localhost string
 }
 
 const inf = "inf"
 
 /*
 	Reads the user and password from a config file and returns empty strings if anything went wrong.
-	If the config file does not exists, it prompts the user for a username and password and creates the config file.
 */
-func readSettings(path string) (string, string) {
+func readSettings(path string) (string, string, string) {
 	settings := Settings{}
 	file, err := os.Open(path)
 	if err != nil {
 		// File was not found
-		fmt.Printf("Please enter your username and password, an account will be automatically created.\n")
-		fmt.Printf("Note that this password will be stored in plain text, so avoid a password that is\n")
-		fmt.Printf("also used for sensitive applications. It also cannot be recovered.\n")
-		fmt.Printf("Enter username : ")
-		fmt.Scanf("%s\n", &settings.User)
-		fmt.Printf("Enter password : ")
-		fmt.Scanf("%s\n", &settings.Pass)
-		jsonSettings, err := json.Marshal(settings)
-		if err != nil {
-			log.Fatal("Cannot encode settings to JSON ", err)
-			return "", ""
-		}
-		settingsFile, err := os.Create(path)
-		defer settingsFile.Close()
-		if err != nil {
-			log.Fatal("Could not create output file ", err)
-			return "", ""
-		}
-		settingsFile.Write(jsonSettings)
-		return settings.User, settings.Pass
+		return "", "", ""
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&settings)
 	if err != nil {
 		log.Fatal("Error decoding JSON ", err)
+		return "", "", ""
+	}
+	return settings.User, settings.Pass, settings.Localhost
+}
+
+/*
+	Prompts the user for a username and password and creates the config file.
+*/
+func createSettings(path string) (string, string) {
+	settings := Settings{}
+
+	fmt.Printf("Please enter your username and password, an account will be automatically created.\n")
+	fmt.Printf("Note that this password will be stored in plain text, so avoid a password that is\n")
+	fmt.Printf("also used for sensitive applications. It also cannot be recovered.\n")
+	fmt.Printf("Enter username : ")
+	fmt.Scanf("%s\n", &settings.User)
+	fmt.Printf("Enter password : ")
+	fmt.Scanf("%s\n", &settings.Pass)
+	jsonSettings, err := json.Marshal(settings)
+	if err != nil {
+		log.Fatal("Cannot encode settings to JSON ", err)
 		return "", ""
 	}
+	settingsFile, err := os.Create(path)
+	defer settingsFile.Close()
+	if err != nil {
+		log.Fatal("Could not create output file ", err)
+		return "", ""
+	}
+	settingsFile.Write(jsonSettings)
 	return settings.User, settings.Pass
 }
 
@@ -119,10 +130,10 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "24",
+		"version":    "25",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
-		"hostname":   localHost,
+		"hostname":   *localHost,
 		"gpu":        gpuType,
 		"gpu_id":     strconv.Itoa(*gpu),
 	}
@@ -271,7 +282,7 @@ func checkLc0() {
 	if bytes.Contains(out, []byte("blas")) {
 		hasBlas = true
 	}
-	if bytes.Contains(out, []byte("dx")) {
+	if bytes.Contains(out, []byte("dx12")) {
 		hasDx = true
 	}
 	if bytes.Contains(out, []byte("cudnn-fp16")) {
@@ -328,9 +339,9 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
 	} else if hasDx {
 		if !hasBlas {
-			log.Fatalf("Dx backend cannot be validated")
+			log.Fatalf("Dx12 backend cannot be validated")
 		}
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,atol=5e-1,dx%v)", sGpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,atol=5e-1,dx12%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
@@ -452,7 +463,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				fmt.Println(line)
 			case strings.HasPrefix(line, "*** ERROR check failed"):
 				fmt.Println(line)
-				log.Fatal("The dx backend failed the self check - try updating gpu drivers")
+				log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
 			case strings.HasPrefix(line, "GPU compute capability:"):
 				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
 				if cc >= 7.0 {
@@ -1063,8 +1074,19 @@ func main() {
 	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	settingsUser, settingsPassword, settingsHost := readSettings(settingsPath)
 	if len(*user) == 0 || len(*password) == 0 {
-		*user, *password = readSettings("settings.json")
+		*user = settingsUser
+		*password = settingsPassword
+
+		if len(*user) == 0 || len(*password) == 0 {
+			*user, *password = createSettings(settingsPath)
+		}
+	}
+
+	if (len(settingsHost) != 0 && len(*localHost) == 0) {
+		*localHost = settingsHost
 	}
 
 	if len(*user) == 0 {
@@ -1074,11 +1096,15 @@ func main() {
 		log.Fatal("You must specify a non-empty password")
 	}
 
-	if *report_host {
+	if *report_host && len(*localHost) == 0 {
 		s, err := os.Hostname()
 		if err == nil {
-			localHost = s
+			*localHost = s
 		}
+	}
+
+	if len(*localHost) == 0 {
+		*localHost = defaultLocalHost
 	}
 
 	httpClient := &http.Client{}
