@@ -45,6 +45,7 @@ var (
 	hasBlas         bool
 	hasDx           bool
 	testedCudnnFp16 bool
+	testedDx        bool
 
 	settingsPath = "settings.json"
 	defaultLocalHost = "Unknown"
@@ -299,6 +300,31 @@ func checkLc0() {
 	}
 }
 
+func checkDx(networkPath string) {
+	dir, _ := os.Getwd()
+	if !hasBlas {
+		log.Fatalf("Dx12 backend cannot be validated")
+	}
+	log.Println("Sanity checking the dx12 driver.")
+	cmd := exec.Command(path.Join(dir, "lc0"))
+	sGpu := ""
+	if *gpu >= 0 {
+		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
+	}
+	cmd.Args = append(cmd.Args, "benchmark", "-w", networkPath, "--backend=check")
+	cmd.Args = append(cmd.Args, fmt.Sprintf("--backend-opts=mode=check,freq=1.0,atol=5e-1,dx12%v", sGpu))
+	// Add the startpos fen to get consistent behavior with old and new lc0 benchmark.
+	cmd.Args = append(cmd.Args, "--fen=rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("*** ERROR check failed")) {
+		log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
+	}
+	log.Println("The dx12 driver passed the initial sanity check.")
+}
+
 func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
 	c.Cmd = exec.Command(path.Join(dir, "lc0"))
@@ -320,6 +346,10 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
 	}
+	if hasDx && !testedDx {
+		checkDx(networkPath)
+		testedDx = true;
+	}
 	if *backopts != "" {
 		// Check agains small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
@@ -338,10 +368,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	} else if hasCudnn {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
 	} else if hasDx {
-		if !hasBlas {
-			log.Fatalf("Dx12 backend cannot be validated")
-		}
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,atol=5e-1,dx12%v)", sGpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=1e-5,atol=5e-1,dx12%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
@@ -1035,7 +1062,7 @@ func maybeSetTrainOnly() {
 			found = true
 		}
 	})
-	if !found && !hasCudnn && !hasCudnnFp16 {
+	if !found && !hasCudnn && !hasCudnnFp16 && !hasDx {
 		*trainOnly = true
 		log.Println("Will only run training games, use -train-only=false to override")
 	}
