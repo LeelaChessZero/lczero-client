@@ -45,7 +45,7 @@ var (
 	hasBlas         bool
 	hasDx           bool
 	testedCudnnFp16 bool
-	testedDx        bool
+	testedDxNet     string
 
 	settingsPath = "settings.json"
 	defaultLocalHost = "Unknown"
@@ -346,12 +346,14 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
 	}
-	if hasDx && !testedDx {
+	// Check the dx12 backend if it is the first time or we changed net, but only if no higher
+	// priority backend is available.
+	if !hasCudnnFp16 && !hasCudnn && hasDx && testedDxNet != networkPath {
 		checkDx(networkPath)
-		testedDx = true;
+		testedDxNet = networkPath;
 	}
 	if *backopts != "" {
-		// Check agains small token blacklist, currently only "random"
+		// Check against small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
