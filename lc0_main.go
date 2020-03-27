@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
-        "crypto/sha256"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -43,7 +43,14 @@ var (
 	hasCudnnFp16    bool
 	hasOpenCL       bool
 	hasBlas         bool
+	hasDx           bool
+	testedDxNet     string
 
+	settingsPath = "settings.json"
+	defaultLocalHost = "Unknown"
+	gpuType   = "Unknown"
+
+	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user     = flag.String("user", "", "Username")
 	password = flag.String("password", "", "Password")
@@ -58,53 +65,64 @@ var (
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
 	version       = flag.Bool("version", false, "Print version and exit.")
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
+	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
+	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
 )
 
 // Settings holds username and password.
 type Settings struct {
 	User string
 	Pass string
+	Localhost string
 }
 
 const inf = "inf"
 
 /*
 	Reads the user and password from a config file and returns empty strings if anything went wrong.
-	If the config file does not exists, it prompts the user for a username and password and creates the config file.
 */
-func readSettings(path string) (string, string) {
+func readSettings(path string) (string, string, string) {
 	settings := Settings{}
 	file, err := os.Open(path)
 	if err != nil {
 		// File was not found
-		fmt.Printf("Please enter your username and password, an account will be automatically created.\n")
-		fmt.Printf("Note that this password will be stored in plain text, so avoid a password that is\n")
-		fmt.Printf("also used for sensitive applications. It also cannot be recovered.\n")
-		fmt.Printf("Enter username : ")
-		fmt.Scanf("%s\n", &settings.User)
-		fmt.Printf("Enter password : ")
-		fmt.Scanf("%s\n", &settings.Pass)
-		jsonSettings, err := json.Marshal(settings)
-		if err != nil {
-			log.Fatal("Cannot encode settings to JSON ", err)
-			return "", ""
-		}
-		settingsFile, err := os.Create(path)
-		defer settingsFile.Close()
-		if err != nil {
-			log.Fatal("Could not create output file ", err)
-			return "", ""
-		}
-		settingsFile.Write(jsonSettings)
-		return settings.User, settings.Pass
+		return "", "", ""
 	}
 	defer file.Close()
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&settings)
 	if err != nil {
 		log.Fatal("Error decoding JSON ", err)
+		return "", "", ""
+	}
+	return settings.User, settings.Pass, settings.Localhost
+}
+
+/*
+	Prompts the user for a username and password and creates the config file.
+*/
+func createSettings(path string) (string, string) {
+	settings := Settings{}
+
+	fmt.Printf("Please enter your username and password, an account will be automatically created.\n")
+	fmt.Printf("Note that this password will be stored in plain text, so avoid a password that is\n")
+	fmt.Printf("also used for sensitive applications. It also cannot be recovered.\n")
+	fmt.Printf("Enter username : ")
+	fmt.Scanf("%s\n", &settings.User)
+	fmt.Printf("Enter password : ")
+	fmt.Scanf("%s\n", &settings.Pass)
+	jsonSettings, err := json.Marshal(settings)
+	if err != nil {
+		log.Fatal("Cannot encode settings to JSON ", err)
 		return "", ""
 	}
+	settingsFile, err := os.Create(path)
+	defer settingsFile.Close()
+	if err != nil {
+		log.Fatal("Could not create output file ", err)
+		return "", ""
+	}
+	settingsFile.Write(jsonSettings)
 	return settings.User, settings.Pass
 }
 
@@ -112,9 +130,12 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "24",
+		"version":    "26",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
+		"hostname":   *localHost,
+		"gpu":        gpuType,
+		"gpu_id":     strconv.Itoa(*gpu),
 	}
 }
 
@@ -210,7 +231,7 @@ func (c *cmdWrapper) openInput() {
 	}
 }
 
-func convertMovesToPGN(moves []string, result string) string {
+func convertMovesToPGN(moves []string, result string, start_ply_count int) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
 	for _, m := range moves {
 		err := game.MoveStr(m)
@@ -237,7 +258,7 @@ func convertMovesToPGN(moves []string, result string) string {
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
-	return game2.String()
+	return game2.String() + " {OL: " + strconv.Itoa(start_ply_count) + "}"
 }
 
 func createCmdWrapper() *cmdWrapper {
@@ -261,6 +282,9 @@ func checkLc0() {
 	if bytes.Contains(out, []byte("blas")) {
 		hasBlas = true
 	}
+	if bytes.Contains(out, []byte("dx12")) {
+		hasDx = true
+	}
 	if bytes.Contains(out, []byte("cudnn-fp16")) {
 		hasCudnnFp16 = true
 	}
@@ -273,6 +297,31 @@ func checkLc0() {
 	if bytes.Contains(out, []byte("opencl")) {
 		hasOpenCL = true
 	}
+}
+
+func checkDx(networkPath string) {
+	dir, _ := os.Getwd()
+	if !hasBlas {
+		log.Fatalf("Dx12 backend cannot be validated")
+	}
+	log.Println("Sanity checking the dx12 driver.")
+	cmd := exec.Command(path.Join(dir, "lc0"))
+	sGpu := ""
+	if *gpu >= 0 {
+		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
+	}
+	cmd.Args = append(cmd.Args, "benchmark", "-w", networkPath, "--backend=check")
+	cmd.Args = append(cmd.Args, fmt.Sprintf("--backend-opts=mode=check,freq=1.0,atol=5e-1,dx12%v", sGpu))
+	// Add the startpos fen to get consistent behavior with old and new lc0 benchmark.
+	cmd.Args = append(cmd.Args, "--fen=rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("*** ERROR check failed")) {
+		log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
+	}
+	log.Println("The dx12 driver passed the initial sanity check.")
 }
 
 func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
@@ -296,8 +345,14 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
 	}
+	// Check the dx12 backend if it is the first time or we changed net, but only if no higher
+	// priority backend is available.
+	if !hasCudnnFp16 && !hasCudnn && hasDx && testedDxNet != networkPath {
+		checkDx(networkPath)
+		testedDxNet = networkPath;
+	}
 	if *backopts != "" {
-		// Check agains small token blacklist, currently only "random"
+		// Check against small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
@@ -313,6 +368,8 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		}
 	} else if hasCudnn {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
+	} else if hasDx {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=1e-5,atol=5e-1,dx12%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
@@ -388,6 +445,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				}
 				idx4 := strings.LastIndex(line, "player1")
 				idx5 := strings.LastIndex(line, "result")
+				idx6 := strings.LastIndex(line, "play_start_ply")
 				result := ""
 				if idx5 < 0 {
 					idx5 = idx3
@@ -398,8 +456,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				if idx4 >= 0 {
 					player = line[idx4+8 : idx5-1]
 				}
+				start_ply_count := -1
+				if idx6 >= 0 {
+					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4 - 1])
+				}
 				file := line[idx1+13 : idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result)
+				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold, player1: player, result: result}
 				last_fp_threshold = -1.0
@@ -411,6 +473,24 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
 				break
+			case strings.HasPrefix(line, "GPU: "):
+				if *report_gpu && *backopts == "" {
+					gpuType = strings.TrimPrefix(line, "GPU: ")
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "Selected device: "):
+				if *report_gpu && *backopts == "" {
+					gpuType = strings.TrimPrefix(line, "Selected device: ")
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "BLAS"):
+				if *report_gpu && *backopts == "" {
+					gpuType = "None"
+				}
+				fmt.Println(line)
+			case strings.HasPrefix(line, "*** ERROR check failed"):
+				fmt.Println(line)
+				log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
 			default:
 				fmt.Println(line)
 			}
@@ -961,7 +1041,7 @@ func maybeSetTrainOnly() {
 			found = true
 		}
 	})
-	if !found && !hasCudnn && !hasCudnnFp16 {
+	if !found && !hasCudnn && !hasCudnnFp16 && !hasDx {
 		*trainOnly = true
 		log.Println("Will only run training games, use -train-only=false to override")
 	}
@@ -1000,8 +1080,19 @@ func main() {
 	}
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	settingsUser, settingsPassword, settingsHost := readSettings(settingsPath)
 	if len(*user) == 0 || len(*password) == 0 {
-		*user, *password = readSettings("settings.json")
+		*user = settingsUser
+		*password = settingsPassword
+
+		if len(*user) == 0 || len(*password) == 0 {
+			*user, *password = createSettings(settingsPath)
+		}
+	}
+
+	if (len(settingsHost) != 0 && len(*localHost) == 0) {
+		*localHost = settingsHost
 	}
 
 	if len(*user) == 0 {
@@ -1009,6 +1100,17 @@ func main() {
 	}
 	if len(*password) == 0 {
 		log.Fatal("You must specify a non-empty password")
+	}
+
+	if *report_host && len(*localHost) == 0 {
+		s, err := os.Hostname()
+		if err == nil {
+			*localHost = s
+		}
+	}
+
+	if len(*localHost) == 0 {
+		*localHost = defaultLocalHost
 	}
 
 	httpClient := &http.Client{}
