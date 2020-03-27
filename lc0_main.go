@@ -23,6 +23,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,9 +48,10 @@ var (
 	testedCudnnFp16 bool
 	testedDxNet     string
 
-	settingsPath = "settings.json"
+	lc0Exe           = "lc0"
+	settingsPath     = "settings.json"
 	defaultLocalHost = "Unknown"
-	gpuType   = "Unknown"
+	gpuType          = "Unknown"
 
 	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
 	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
@@ -274,7 +276,7 @@ func createCmdWrapper() *cmdWrapper {
 
 func checkLc0() {
 	dir, _ := os.Getwd()
-	cmd := exec.Command(path.Join(dir, "lc0"))
+	cmd := exec.Command(path.Join(dir, lc0Exe))
 	cmd.Args = append(cmd.Args, "--help")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -306,7 +308,7 @@ func checkDx(networkPath string) {
 		log.Fatalf("Dx12 backend cannot be validated")
 	}
 	log.Println("Sanity checking the dx12 driver.")
-	cmd := exec.Command(path.Join(dir, "lc0"))
+	cmd := exec.Command(path.Join(dir, lc0Exe))
 	sGpu := ""
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
@@ -327,7 +329,7 @@ func checkDx(networkPath string) {
 
 func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
-	c.Cmd = exec.Command(path.Join(dir, "lc0"))
+	c.Cmd = exec.Command(path.Join(dir, lc0Exe))
 	// Add the "selfplay" or "uci" part first
 	mode := args[0]
 	c.Cmd.Args = append(c.Cmd.Args, mode)
@@ -1080,6 +1082,10 @@ func main() {
 
 	if *version {
 		return
+	}
+
+	if runtime.GOOS == "windows" {
+		lc0Exe = "lc0.exe"
 	}
 
 	checkLc0()
