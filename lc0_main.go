@@ -239,12 +239,11 @@ func convertMovesToPGN(moves []string, result string, start_ply_count int) strin
 	if len(moves) > 6 && moves[len(moves)-7] == "from_fen" {
 		fen := strings.Join(moves[len(moves)-6:], " ")
 		moves = moves[:len(moves)-7]
-		tagPairs := []*chess.TagPair{}
 		pair := &chess.TagPair{
 			Key:   "FEN",
 			Value: fen,
 		}
-		tagPairs = append(tagPairs, pair)
+		tagPairs := []*chess.TagPair{pair}
 		fen_func, _ := chess.FEN(fen)
 		game = chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}), fen_func, chess.TagPairs(tagPairs))
 	}
