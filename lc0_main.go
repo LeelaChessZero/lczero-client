@@ -54,10 +54,10 @@ var (
 	gpuType          = "Unknown"
 
 	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
-	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
-	user     = flag.String("user", "", "Username")
-	password = flag.String("password", "", "Password")
-	gpu      = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
+	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
+	user      = flag.String("user", "", "Username")
+	password  = flag.String("password", "", "Password")
+	gpu       = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
 	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -74,8 +74,8 @@ var (
 
 // Settings holds username and password.
 type Settings struct {
-	User string
-	Pass string
+	User      string
+	Pass      string
 	Localhost string
 }
 
@@ -236,6 +236,11 @@ func (c *cmdWrapper) openInput() {
 
 func convertMovesToPGN(moves []string, result string, start_ply_count int) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
+	if len(moves) > 6 && moves[len(moves)-7] == "from_fen" {
+		fen := strings.Join(moves[len(moves)-6:], " ")
+		moves = moves[:len(moves)-7]
+		game = chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}), chess.FEN(fen), chess.TagPairs("FEN", fen))
+	}
 	for _, m := range moves {
 		err := game.MoveStr(m)
 		if err != nil {
@@ -257,7 +262,7 @@ func convertMovesToPGN(moves []string, result string, start_ply_count int) strin
 			to_append = "1-0"
 		} else if result == "blackwon" {
 			to_append = "0-1"
-		}	
+		}
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
@@ -352,7 +357,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	// priority backend is available.
 	if !hasCudnnFp16 && !hasCudnn && hasDx && testedDxNet != networkPath {
 		checkDx(networkPath)
-		testedDxNet = networkPath;
+		testedDxNet = networkPath
 	}
 	if *backopts != "" {
 		// Check against small token blacklist, currently only "random"
@@ -461,7 +466,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				}
 				start_ply_count := -1
 				if idx6 >= 0 {
-					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4 - 1])
+					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4-1])
 				}
 				file := line[idx1+13 : idx2-1]
 				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
@@ -773,7 +778,7 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 	if err == nil {
 		file, _ := os.Open(path)
 		reader, err := gzip.NewReader(file)
-                if err == nil {
+		if err == nil {
 			var bytes []byte
 			bytes, err = ioutil.ReadAll(reader)
 			sum := sha256.Sum256(bytes)
@@ -906,7 +911,7 @@ func getBook(httpClient *http.Client, book_url string) (string, error) {
 		return "", err
 	}
 
-	out, err := ioutil.TempFile(dir, book_name + "_tmp")
+	out, err := ioutil.TempFile(dir, book_name+"_tmp")
 	if err != nil {
 		log.Println("Unable to create temporary file")
 		return "", err
@@ -1120,7 +1125,7 @@ func main() {
 		}
 	}
 
-	if (len(settingsHost) != 0 && len(*localHost) == 0) {
+	if len(settingsHost) != 0 && len(*localHost) == 0 {
 		*localHost = settingsHost
 	}
 
