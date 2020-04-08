@@ -1043,16 +1043,9 @@ func nextGame(httpClient *http.Client, count int) error {
 	return errors.New("Unknown game type: " + nextGame.Type)
 }
 
-// Check if PGN may contain "e.p." to verify that the chess package is recent
-func testEP() {
-	game := chess.NewGame(chess.UseNotation(chess.AlgebraicNotation{}))
-	game.MoveStr("a4")
-	game.MoveStr("c5")
-	game.MoveStr("a5")
-	game.MoveStr("b5")
-	game.MoveStr("axb6")
-
-	if strings.Contains(game.String(), "e.p.") {
+// Ensure Tilps/chess is new enough.
+func testChessVersion() {
+	if chess.GetLibraryVersion() < 3 {
 		log.Fatal("You need a more recent version of package github.com/Tilps/chess")
 	}
 }
@@ -1086,7 +1079,7 @@ func maybeSetTrainOnly() {
 func main() {
 	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
 
-	testEP()
+	testChessVersion()
 
 	hideLc0argsFlag()
 	flag.Parse()
