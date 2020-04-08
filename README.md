@@ -22,6 +22,10 @@ Pull or download the `master` branch
 Then to produce a `lczero-client` executable:
 `go build lc0_main.go` for the `lc0` client
 
+If you get
+`.\lc0_main.go:1048:5: undefined: chess.GetLibraryVersion`
+you have a cached old version of Tilps/chess and need to run the Pre-reqs again.
+
 # Running
 
 First copy the `lc0` executable into the same folder as the `lczero-client` executable.

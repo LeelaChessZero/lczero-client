@@ -23,6 +23,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,16 +46,18 @@ var (
 	hasBlas         bool
 	hasDx           bool
 	testedCudnnFp16 bool
+	testedDxNet     string
 
-	settingsPath = "settings.json"
+	lc0Exe           = "lc0"
+	settingsPath     = "settings.json"
 	defaultLocalHost = "Unknown"
-	gpuType   = "Unknown"
+	gpuType          = "Unknown"
 
 	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
-	hostname = flag.String("hostname", "http://api.lczero.org", "Address of the server")
-	user     = flag.String("user", "", "Username")
-	password = flag.String("password", "", "Password")
-	gpu      = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
+	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
+	user      = flag.String("user", "", "Username")
+	password  = flag.String("password", "", "Password")
+	gpu       = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
 	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -71,8 +74,8 @@ var (
 
 // Settings holds username and password.
 type Settings struct {
-	User string
-	Pass string
+	User      string
+	Pass      string
 	Localhost string
 }
 
@@ -130,7 +133,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "25",
+		"version":    "26",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 		"hostname":   *localHost,
@@ -233,6 +236,17 @@ func (c *cmdWrapper) openInput() {
 
 func convertMovesToPGN(moves []string, result string, start_ply_count int) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
+	if len(moves) > 6 && moves[len(moves)-7] == "from_fen" {
+		fen := strings.Join(moves[len(moves)-6:], " ")
+		moves = moves[:len(moves)-7]
+		pair := &chess.TagPair{
+			Key:   "FEN",
+			Value: fen,
+		}
+		tagPairs := []*chess.TagPair{pair}
+		fen_func, _ := chess.FEN(fen)
+		game = chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}), fen_func, chess.TagPairs(tagPairs))
+	}
 	for _, m := range moves {
 		err := game.MoveStr(m)
 		if err != nil {
@@ -254,7 +268,7 @@ func convertMovesToPGN(moves []string, result string, start_ply_count int) strin
 			to_append = "1-0"
 		} else if result == "blackwon" {
 			to_append = "0-1"
-		}	
+		}
 		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
 	game2.UnmarshalText(b)
@@ -273,7 +287,7 @@ func createCmdWrapper() *cmdWrapper {
 
 func checkLc0() {
 	dir, _ := os.Getwd()
-	cmd := exec.Command(path.Join(dir, "lc0"))
+	cmd := exec.Command(path.Join(dir, lc0Exe))
 	cmd.Args = append(cmd.Args, "--help")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -299,9 +313,34 @@ func checkLc0() {
 	}
 }
 
+func checkDx(networkPath string) {
+	dir, _ := os.Getwd()
+	if !hasBlas {
+		log.Fatalf("Dx12 backend cannot be validated")
+	}
+	log.Println("Sanity checking the dx12 driver.")
+	cmd := exec.Command(path.Join(dir, lc0Exe))
+	sGpu := ""
+	if *gpu >= 0 {
+		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
+	}
+	cmd.Args = append(cmd.Args, "benchmark", "-w", networkPath, "--backend=check")
+	cmd.Args = append(cmd.Args, fmt.Sprintf("--backend-opts=mode=check,freq=1.0,atol=5e-1,dx12%v", sGpu))
+	// Add the startpos fen to get consistent behavior with old and new lc0 benchmark.
+	cmd.Args = append(cmd.Args, "--fen=rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if bytes.Contains(out, []byte("*** ERROR check failed")) {
+		log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
+	}
+	log.Println("The dx12 driver passed the initial sanity check.")
+}
+
 func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
 	dir, _ := os.Getwd()
-	c.Cmd = exec.Command(path.Join(dir, "lc0"))
+	c.Cmd = exec.Command(path.Join(dir, lc0Exe))
 	// Add the "selfplay" or "uci" part first
 	mode := args[0]
 	c.Cmd.Args = append(c.Cmd.Args, mode)
@@ -320,8 +359,14 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
 	}
+	// Check the dx12 backend if it is the first time or we changed net, but only if no higher
+	// priority backend is available.
+	if !hasCudnnFp16 && !hasCudnn && hasDx && testedDxNet != networkPath {
+		checkDx(networkPath)
+		testedDxNet = networkPath
+	}
 	if *backopts != "" {
-		// Check agains small token blacklist, currently only "random"
+		// Check against small token blacklist, currently only "random"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
@@ -338,10 +383,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	} else if hasCudnn {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
 	} else if hasDx {
-		if !hasBlas {
-			log.Fatalf("Dx12 backend cannot be validated")
-		}
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=.01,atol=5e-1,dx12%v)", sGpu))
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=1e-5,atol=5e-1,dx12%v)", sGpu))
 	} else if hasOpenCL {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=opencl%v", sGpu))
 	}
@@ -430,7 +472,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				}
 				start_ply_count := -1
 				if idx6 >= 0 {
-					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4 - 1])
+					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4-1])
 				}
 				file := line[idx1+13 : idx2-1]
 				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
@@ -742,7 +784,7 @@ func checkValidNetwork(dir string, sha string) (string, error) {
 	if err == nil {
 		file, _ := os.Open(path)
 		reader, err := gzip.NewReader(file)
-                if err == nil {
+		if err == nil {
 			var bytes []byte
 			bytes, err = ioutil.ReadAll(reader)
 			sum := sha256.Sum256(bytes)
@@ -875,7 +917,7 @@ func getBook(httpClient *http.Client, book_url string) (string, error) {
 		return "", err
 	}
 
-	out, err := ioutil.TempFile(dir, book_name + "_tmp")
+	out, err := ioutil.TempFile(dir, book_name+"_tmp")
 	if err != nil {
 		log.Println("Unable to create temporary file")
 		return "", err
@@ -1001,16 +1043,9 @@ func nextGame(httpClient *http.Client, count int) error {
 	return errors.New("Unknown game type: " + nextGame.Type)
 }
 
-// Check if PGN may contain "e.p." to verify that the chess package is recent
-func testEP() {
-	game := chess.NewGame(chess.UseNotation(chess.AlgebraicNotation{}))
-	game.MoveStr("a4")
-	game.MoveStr("c5")
-	game.MoveStr("a5")
-	game.MoveStr("b5")
-	game.MoveStr("axb6")
-
-	if strings.Contains(game.String(), "e.p.") {
+// Ensure Tilps/chess is new enough.
+func testChessVersion() {
+	if chess.GetLibraryVersion() < 3 {
 		log.Fatal("You need a more recent version of package github.com/Tilps/chess")
 	}
 }
@@ -1035,7 +1070,7 @@ func maybeSetTrainOnly() {
 			found = true
 		}
 	})
-	if !found && !hasCudnn && !hasCudnnFp16 {
+	if !found && !hasCudnn && !hasCudnnFp16 && !hasDx {
 		*trainOnly = true
 		log.Println("Will only run training games, use -train-only=false to override")
 	}
@@ -1044,13 +1079,17 @@ func maybeSetTrainOnly() {
 func main() {
 	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
 
-	testEP()
+	testChessVersion()
 
 	hideLc0argsFlag()
 	flag.Parse()
 
 	if *version {
 		return
+	}
+
+	if runtime.GOOS == "windows" {
+		lc0Exe = "lc0.exe"
 	}
 
 	checkLc0()
@@ -1085,7 +1124,7 @@ func main() {
 		}
 	}
 
-	if (len(settingsHost) != 0 && len(*localHost) == 0) {
+	if len(settingsHost) != 0 && len(*localHost) == 0 {
 		*localHost = settingsHost
 	}
 
