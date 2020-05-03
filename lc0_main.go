@@ -43,7 +43,7 @@ var (
 	hasCudnn        bool
 	hasCudnnFp16    bool
 	hasOpenCL       bool
-	hasBlas         bool
+	hasEigen        bool
 	hasDx           bool
 	testedCudnnFp16 bool
 	testedDxNet     string
@@ -293,8 +293,8 @@ func checkLc0() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if bytes.Contains(out, []byte("blas")) {
-		hasBlas = true
+	if bytes.Contains(out, []byte("eigen")) {
+		hasEigen = true
 	}
 	if bytes.Contains(out, []byte("dx12")) {
 		hasDx = true
@@ -315,7 +315,7 @@ func checkLc0() {
 
 func checkDx(networkPath string) {
 	dir, _ := os.Getwd()
-	if !hasBlas {
+	if !hasEigen {
 		log.Fatalf("Dx12 backend cannot be validated")
 	}
 	log.Println("Sanity checking the dx12 driver.")
