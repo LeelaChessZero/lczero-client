@@ -49,7 +49,6 @@ var (
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
-	settingsPath     = "settings.json"
 	defaultLocalHost = "Unknown"
 	gpuType          = "Unknown"
 
@@ -70,6 +69,7 @@ var (
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
 	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
 	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
+	settingsPath  = flag.String("config", "", "JSON configuration file to use")
 )
 
 // Settings holds username and password.
@@ -1114,13 +1114,34 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	settingsUser, settingsPassword, settingsHost := readSettings(settingsPath)
+	if runtime.GOOS == "linux" && len(*settingsPath) == 0 {
+		configDir := os.Getenv("XDG_CONFIG_HOME")
+		if len(configDir) != 0 {
+			*settingsPath = configDir + "/lc0-training-client-config.json"
+		} else {
+			homeDir := os.Getenv("HOME")
+			if len(homeDir) != 0 {
+				*settingsPath = homeDir + "/.config/lc0-training-client-config.json"
+			}
+		}
+	} else if runtime.GOOS == "darwin" && len(*settingsPath) == 0 {
+		homeDir := os.Getenv("HOME")
+		if len(homeDir) != 0 {
+			*settingsPath = homeDir + "/Library/Preferences/lc0-training-client-config.json"
+		}
+	}
+
+	if len(*settingsPath) == 0 {
+		*settingsPath = "lc0-training-client-config.json"
+	}
+
+	settingsUser, settingsPassword, settingsHost := readSettings(*settingsPath)
 	if len(*user) == 0 || len(*password) == 0 {
 		*user = settingsUser
 		*password = settingsPassword
 
 		if len(*user) == 0 || len(*password) == 0 {
-			*user, *password = createSettings(settingsPath)
+			*user, *password = createSettings(*settingsPath)
 		}
 	}
 
