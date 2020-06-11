@@ -63,6 +63,7 @@ var (
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel      = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
+	cacheDir      = flag.String("cache", "", "Directory to use for downloaded networks cache")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	runId         = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
@@ -842,6 +843,30 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "client-cache"
+	if len(*cacheDir) != 0 {
+		dir = *cacheDir
+	} else {
+		userCache := ""
+		if runtime.GOOS == "linux" {
+			userCache = os.Getenv("XDG_CACHE_HOME")
+			if len(userCache) == 0 {
+				homeDir := os.Getenv("HOME")
+				if len(homeDir) != 0 {
+					userCache = homeDir + "/.cache"
+				}
+			}
+		} else if runtime.GOOS == "darwin" {
+			homeDir := os.Getenv("HOME")
+			if len(homeDir) != 0 {
+				userCache = homeDir + "/Library/Caches"
+			}
+		}
+
+		if len(userCache) != 0 {
+			userCache = filepath.Join(userCache, "lc0")
+			dir = filepath.Join(userCache, dir)
+		}
+	}
 	os.MkdirAll(dir, os.ModePerm)
 	if keepTime != inf {
 		err := removeAllExcept(dir, sha, keepTime)
