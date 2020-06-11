@@ -52,7 +52,7 @@ var (
 	defaultLocalHost = "Unknown"
 	gpuType          = "Unknown"
 
-	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
+	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
 	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user      = flag.String("user", "", "Username")
 	password  = flag.String("password", "", "Password")
