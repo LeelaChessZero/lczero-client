@@ -1114,25 +1114,32 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	if runtime.GOOS == "linux" && len(*settingsPath) == 0 {
-		configDir := os.Getenv("XDG_CONFIG_HOME")
-		if len(configDir) != 0 {
-			*settingsPath = configDir + "/lc0-training-client-config.json"
-		} else {
-			homeDir := os.Getenv("HOME")
-			if len(homeDir) != 0 {
-				*settingsPath = homeDir + "/.config/lc0-training-client-config.json"
-			}
-		}
-	} else if runtime.GOOS == "darwin" && len(*settingsPath) == 0 {
-		homeDir := os.Getenv("HOME")
-		if len(homeDir) != 0 {
-			*settingsPath = homeDir + "/Library/Preferences/lc0-training-client-config.json"
-		}
-	}
-
 	if len(*settingsPath) == 0 {
 		*settingsPath = "lc0-training-client-config.json"
+		configDir := ""
+		if runtime.GOOS == "linux" {
+			configDir = os.Getenv("XDG_CONFIG_HOME")
+			if len(configDir) == 0 {
+				homeDir := os.Getenv("HOME")
+				if len(homeDir) != 0 {
+					configDir = homeDir + "/.config"
+				}
+			}
+		} else if runtime.GOOS == "darwin" {
+			homeDir := os.Getenv("HOME")
+			if len(homeDir) != 0 {
+				configDir = homeDir + "/Library/Preferences"
+			}
+		}
+
+		if len(configDir) != 0 {
+			configDir = filepath.Join(configDir, "lc0")
+			_, err = os.Stat(configDir)
+			if os.IsNotExist(err) {
+				err = os.MkdirAll(configDir, os.ModePerm)
+			}
+			*settingsPath = filepath.Join(configDir, *settingsPath)
+		}
 	}
 
 	settingsUser, settingsPassword, settingsHost := readSettings(*settingsPath)
