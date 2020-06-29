@@ -863,8 +863,11 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 		}
 
 		if len(userCache) != 0 {
-			userCache = filepath.Join(userCache, "lc0")
-			dir = filepath.Join(userCache, dir)
+			_, err := os.Stat(userCache)
+			if err == nil {
+				userCache = filepath.Join(userCache, "lc0")
+				dir = filepath.Join(userCache, dir)
+			}
 		}
 	}
 	os.MkdirAll(dir, os.ModePerm)
