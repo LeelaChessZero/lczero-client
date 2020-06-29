@@ -43,17 +43,15 @@ var (
 	hasCudnn        bool
 	hasCudnnFp16    bool
 	hasOpenCL       bool
-	hasBlas         bool
+	hasEigen        bool
 	hasDx           bool
-	testedCudnnFp16 bool
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
-	settingsPath     = "settings.json"
 	defaultLocalHost = "Unknown"
 	gpuType          = "Unknown"
 
-	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
+	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
 	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user      = flag.String("user", "", "Username")
 	password  = flag.String("password", "", "Password")
@@ -63,6 +61,7 @@ var (
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel      = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
+	cacheDir      = flag.String("cache", "", "Directory to use for downloaded networks cache")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	runId         = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
@@ -70,6 +69,7 @@ var (
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
 	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
 	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
+	settingsPath  = flag.String("config", "", "JSON configuration file to use")
 )
 
 // Settings holds username and password.
@@ -133,7 +133,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "26",
+		"version":    "28",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 		"hostname":   *localHost,
@@ -286,15 +286,14 @@ func createCmdWrapper() *cmdWrapper {
 }
 
 func checkLc0() {
-	dir, _ := os.Getwd()
-	cmd := exec.Command(path.Join(dir, lc0Exe))
+	cmd := exec.Command(lc0Exe)
 	cmd.Args = append(cmd.Args, "--help")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Fatal(err)
 	}
-	if bytes.Contains(out, []byte("blas")) {
-		hasBlas = true
+	if bytes.Contains(out, []byte("eigen")) {
+		hasEigen = true
 	}
 	if bytes.Contains(out, []byte("dx12")) {
 		hasDx = true
@@ -314,12 +313,11 @@ func checkLc0() {
 }
 
 func checkDx(networkPath string) {
-	dir, _ := os.Getwd()
-	if !hasBlas {
+	if !hasEigen {
 		log.Fatalf("Dx12 backend cannot be validated")
 	}
 	log.Println("Sanity checking the dx12 driver.")
-	cmd := exec.Command(path.Join(dir, lc0Exe))
+	cmd := exec.Command(lc0Exe)
 	sGpu := ""
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
@@ -339,8 +337,7 @@ func checkDx(networkPath string) {
 }
 
 func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
-	dir, _ := os.Getwd()
-	c.Cmd = exec.Command(path.Join(dir, lc0Exe))
+	c.Cmd = exec.Command(lc0Exe)
 	// Add the "selfplay" or "uci" part first
 	mode := args[0]
 	c.Cmd.Args = append(c.Cmd.Args, mode)
@@ -481,13 +478,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				last_fp_threshold = -1.0
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
-				testedCudnnFp16 = true
 				c.BestMove <- strings.Split(line, " ")[1]
 			case strings.HasPrefix(line, "id name Lc0 "):
 				c.Version = strings.Split(line, " ")[3]
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
-				testedCudnnFp16 = true
+				break
 			case strings.HasPrefix(line, "GPU: "):
 				if *report_gpu && *backopts == "" {
 					gpuType = strings.TrimPrefix(line, "GPU: ")
@@ -506,12 +502,6 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "*** ERROR check failed"):
 				fmt.Println(line)
 				log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
-			case strings.HasPrefix(line, "GPU compute capability:"):
-				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
-				if cc >= 7.0 {
-					testedCudnnFp16 = true
-				}
-				fallthrough
 			default:
 				fmt.Println(line)
 			}
@@ -657,18 +647,10 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 			}
 		case gi, ok := <-c.gi:
 			if !ok {
-				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
-					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
-					hasCudnnFp16 = false
-					close(reverseDoneCh)
-					return nil, errors.New("retry")
-				}
 				log.Printf("GameInfo channel closed, exiting match loop")
 				done = true
 				break
 			}
-			testedCudnnFp16 = true
 			progressOrKill = true
 			trainDirHolder[0] = path.Dir(gi.fname)
 			wg.Add(1)
@@ -738,17 +720,10 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 		case gi, ok := <-c.gi:
 			if !ok {
-				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
-					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
-					hasCudnnFp16 = false
-					return errors.New("retry")
-				}
 				log.Printf("GameInfo channel closed, exiting train loop")
 				done = true
 				break
 			}
-			testedCudnnFp16 = true
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
@@ -842,6 +817,33 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := "client-cache"
+	if len(*cacheDir) != 0 {
+		dir = *cacheDir
+	} else {
+		userCache := ""
+		if runtime.GOOS == "linux" {
+			userCache = os.Getenv("XDG_CACHE_HOME")
+			if len(userCache) == 0 {
+				homeDir := os.Getenv("HOME")
+				if len(homeDir) != 0 {
+					userCache = homeDir + "/.cache"
+				}
+			}
+		} else if runtime.GOOS == "darwin" {
+			homeDir := os.Getenv("HOME")
+			if len(homeDir) != 0 {
+				userCache = homeDir + "/Library/Caches"
+			}
+		}
+
+		if len(userCache) != 0 {
+			_, err := os.Stat(userCache)
+			if err == nil {
+				userCache = filepath.Join(userCache, "lc0")
+				dir = filepath.Join(userCache, dir)
+			}
+		}
+	}
 	os.MkdirAll(dir, os.ModePerm)
 	if keepTime != inf {
 		err := removeAllExcept(dir, sha, keepTime)
@@ -1091,7 +1093,11 @@ func main() {
 	if runtime.GOOS == "windows" {
 		lc0Exe = "lc0.exe"
 	}
-
+	dir, _ := os.Getwd()
+	fi, err := os.Stat(path.Join(dir, lc0Exe))
+	if err == nil && !fi.Mode().Perm().IsDir() {
+		lc0Exe = path.Join(dir, lc0Exe)
+	}
 	checkLc0()
 
 	maybeSetTrainOnly()
@@ -1101,7 +1107,7 @@ func main() {
 		log.Fatal("Training run number too large")
 	}
 	randBytes := make([]byte, 2)
-	_, err := rand.Reader.Read(randBytes)
+	_, err = rand.Reader.Read(randBytes)
 	if err != nil {
 		randId = -1
 	} else {
@@ -1114,13 +1120,43 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	settingsUser, settingsPassword, settingsHost := readSettings(settingsPath)
+	if len(*settingsPath) == 0 {
+		*settingsPath = "lc0-training-client-config.json"
+		configDir := ""
+		if runtime.GOOS == "linux" {
+			configDir = os.Getenv("XDG_CONFIG_HOME")
+			if len(configDir) == 0 {
+				homeDir := os.Getenv("HOME")
+				if len(homeDir) != 0 {
+					configDir = homeDir + "/.config"
+				}
+			}
+		} else if runtime.GOOS == "darwin" {
+			homeDir := os.Getenv("HOME")
+			if len(homeDir) != 0 {
+				configDir = homeDir + "/Library/Preferences"
+			}
+		}
+
+		if len(configDir) != 0 {
+			configDir = filepath.Join(configDir, "lc0")
+			_, err = os.Stat(configDir)
+			if os.IsNotExist(err) {
+				err = os.Mkdir(configDir, os.ModePerm)
+			}
+			if err == nil {
+				*settingsPath = filepath.Join(configDir, *settingsPath)
+			}
+		}
+	}
+
+	settingsUser, settingsPassword, settingsHost := readSettings(*settingsPath)
 	if len(*user) == 0 || len(*password) == 0 {
 		*user = settingsUser
 		*password = settingsPassword
 
 		if len(*user) == 0 || len(*password) == 0 {
-			*user, *password = createSettings(settingsPath)
+			*user, *password = createSettings(*settingsPath)
 		}
 	}
 
