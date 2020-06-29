@@ -45,7 +45,6 @@ var (
 	hasOpenCL       bool
 	hasEigen        bool
 	hasDx           bool
-	testedCudnnFp16 bool
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
@@ -481,13 +480,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				last_fp_threshold = -1.0
 			case strings.HasPrefix(line, "bestmove "):
 				//				fmt.Println(line)
-				testedCudnnFp16 = true
 				c.BestMove <- strings.Split(line, " ")[1]
 			case strings.HasPrefix(line, "id name Lc0 "):
 				c.Version = strings.Split(line, " ")[3]
 				fmt.Println(line)
 			case strings.HasPrefix(line, "info"):
-				testedCudnnFp16 = true
+				break
 			case strings.HasPrefix(line, "GPU: "):
 				if *report_gpu && *backopts == "" {
 					gpuType = strings.TrimPrefix(line, "GPU: ")
@@ -506,12 +504,6 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "*** ERROR check failed"):
 				fmt.Println(line)
 				log.Fatal("The dx12 backend failed the self check - try updating gpu drivers")
-			case strings.HasPrefix(line, "GPU compute capability:"):
-				cc, _ := strconv.ParseFloat(strings.Split(line, " ")[3], 32)
-				if cc >= 7.0 {
-					testedCudnnFp16 = true
-				}
-				fallthrough
 			default:
 				fmt.Println(line)
 			}
@@ -657,18 +649,10 @@ func playMatch(httpClient *http.Client, ngr client.NextGameResponse, baselinePat
 			}
 		case gi, ok := <-c.gi:
 			if !ok {
-				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
-					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
-					hasCudnnFp16 = false
-					close(reverseDoneCh)
-					return nil, errors.New("retry")
-				}
 				log.Printf("GameInfo channel closed, exiting match loop")
 				done = true
 				break
 			}
-			testedCudnnFp16 = true
 			progressOrKill = true
 			trainDirHolder[0] = path.Dir(gi.fname)
 			wg.Add(1)
@@ -738,17 +722,10 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 			}
 		case gi, ok := <-c.gi:
 			if !ok {
-				// Under windows we don't get the exception, so also check here.
-				if hasCudnnFp16 && !testedCudnnFp16 && *backopts == "" {
-					log.Println("GPU probably doesn't support the cudnn-fp16 backend")
-					hasCudnnFp16 = false
-					return errors.New("retry")
-				}
 				log.Printf("GameInfo channel closed, exiting train loop")
 				done = true
 				break
 			}
-			testedCudnnFp16 = true
 			fmt.Printf("Uploading game: %d\n", numGames)
 			numGames++
 			progressOrKill = true
