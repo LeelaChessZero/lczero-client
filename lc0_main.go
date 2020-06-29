@@ -286,8 +286,7 @@ func createCmdWrapper() *cmdWrapper {
 }
 
 func checkLc0() {
-	dir, _ := os.Getwd()
-	cmd := exec.Command(path.Join(dir, lc0Exe))
+	cmd := exec.Command(lc0Exe)
 	cmd.Args = append(cmd.Args, "--help")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -314,12 +313,11 @@ func checkLc0() {
 }
 
 func checkDx(networkPath string) {
-	dir, _ := os.Getwd()
 	if !hasEigen {
 		log.Fatalf("Dx12 backend cannot be validated")
 	}
 	log.Println("Sanity checking the dx12 driver.")
-	cmd := exec.Command(path.Join(dir, lc0Exe))
+	cmd := exec.Command(lc0Exe)
 	sGpu := ""
 	if *gpu >= 0 {
 		sGpu = fmt.Sprintf(",gpu=%v", *gpu)
@@ -339,8 +337,7 @@ func checkDx(networkPath string) {
 }
 
 func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []string, input bool) {
-	dir, _ := os.Getwd()
-	c.Cmd = exec.Command(path.Join(dir, lc0Exe))
+	c.Cmd = exec.Command(lc0Exe)
 	// Add the "selfplay" or "uci" part first
 	mode := args[0]
 	c.Cmd.Args = append(c.Cmd.Args, mode)
@@ -1096,7 +1093,11 @@ func main() {
 	if runtime.GOOS == "windows" {
 		lc0Exe = "lc0.exe"
 	}
-
+	dir, _ := os.Getwd()
+	fi, err := os.Stat(path.Join(dir, lc0Exe))
+	if err == nil && !fi.Mode().Perm().IsDir() {
+		lc0Exe = path.Join(dir, lc0Exe)
+	}
 	checkLc0()
 
 	maybeSetTrainOnly()
@@ -1106,7 +1107,7 @@ func main() {
 		log.Fatal("Training run number too large")
 	}
 	randBytes := make([]byte, 2)
-	_, err := rand.Reader.Read(randBytes)
+	_, err = rand.Reader.Read(randBytes)
 	if err != nil {
 		randId = -1
 	} else {
