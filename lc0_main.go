@@ -48,11 +48,10 @@ var (
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
-	settingsPath     = "settings.json"
 	defaultLocalHost = "Unknown"
 	gpuType          = "Unknown"
 
-	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting (defaults to Unknown, overridden by settings.json)")
+	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
 	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
 	user      = flag.String("user", "", "Username")
 	password  = flag.String("password", "", "Password")
@@ -69,6 +68,7 @@ var (
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
 	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
 	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
+	settingsPath  = flag.String("config", "", "JSON configuration file to use")
 )
 
 // Settings holds username and password.
@@ -1091,13 +1091,43 @@ func main() {
 
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	settingsUser, settingsPassword, settingsHost := readSettings(settingsPath)
+	if len(*settingsPath) == 0 {
+		*settingsPath = "lc0-training-client-config.json"
+		configDir := ""
+		if runtime.GOOS == "linux" {
+			configDir = os.Getenv("XDG_CONFIG_HOME")
+			if len(configDir) == 0 {
+				homeDir := os.Getenv("HOME")
+				if len(homeDir) != 0 {
+					configDir = homeDir + "/.config"
+				}
+			}
+		} else if runtime.GOOS == "darwin" {
+			homeDir := os.Getenv("HOME")
+			if len(homeDir) != 0 {
+				configDir = homeDir + "/Library/Preferences"
+			}
+		}
+
+		if len(configDir) != 0 {
+			configDir = filepath.Join(configDir, "lc0")
+			_, err = os.Stat(configDir)
+			if os.IsNotExist(err) {
+				err = os.Mkdir(configDir, os.ModePerm)
+			}
+			if err == nil {
+				*settingsPath = filepath.Join(configDir, *settingsPath)
+			}
+		}
+	}
+
+	settingsUser, settingsPassword, settingsHost := readSettings(*settingsPath)
 	if len(*user) == 0 || len(*password) == 0 {
 		*user = settingsUser
 		*password = settingsPassword
 
 		if len(*user) == 0 || len(*password) == 0 {
-			*user, *password = createSettings(settingsPath)
+			*user, *password = createSettings(*settingsPath)
 		}
 	}
 
