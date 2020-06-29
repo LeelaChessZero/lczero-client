@@ -7,21 +7,21 @@ environment:
   matrix:
   - NAME: .exe
     GOOS: windows
-  - NAME: _linux
+  - NAME: -linux
     GOOS: linux
-  - NAME: _mac
+  - NAME: -mac
     GOOS: darwin
 install:
   - go get -u github.com/Tilps/chess
   - go get -u github.com/nightlyone/lockfile
 build_script:
-  - go build -o client%NAME% lc0_main.go
+  - go build -o lc0-training-client%NAME% lc0_main.go
 artifacts:
-  - path: client$(NAME)
-    name: client
+  - path: lc0-training-client$(NAME)
+    name: lc0-training-client
 deploy:
   - provider: GitHub
-    artifact: client%NAME%
+    artifact: lc0-training-client%NAME%
     auth_token:
       secure: USFAdwQKTXqOXQjCYQfzWvzRpUhvqJLBkN4hbOg+j876vDxGZHt9bMYayb5evePp
     on:
