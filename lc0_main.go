@@ -1136,9 +1136,11 @@ func main() {
 			configDir = filepath.Join(configDir, "lc0")
 			_, err = os.Stat(configDir)
 			if os.IsNotExist(err) {
-				err = os.MkdirAll(configDir, os.ModePerm)
+				err = os.Mkdir(configDir, os.ModePerm)
 			}
-			*settingsPath = filepath.Join(configDir, *settingsPath)
+			if err == nil {
+				*settingsPath = filepath.Join(configDir, *settingsPath)
+			}
 		}
 	}
 
