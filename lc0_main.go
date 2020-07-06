@@ -367,7 +367,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
-			case "random":
+			case "random", "recordreplay":
 				log.Fatalf("Not accepted in --backend-opts: %s", token)
 			}
 		}
