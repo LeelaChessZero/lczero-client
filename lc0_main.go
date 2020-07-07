@@ -363,11 +363,11 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		testedDxNet = networkPath
 	}
 	if *backopts != "" {
-		// Check against small token blacklist, currently only "random"
+		// Check against small token blacklist, currently only "mlh", "random" and "recordreplay"
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
-			case "random":
+			case "mlh", "random", "recordreplay":
 				log.Fatalf("Not accepted in --backend-opts: %s", token)
 			}
 		}
