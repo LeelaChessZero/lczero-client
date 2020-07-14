@@ -87,6 +87,7 @@ type NextGameResponse struct {
 	MatchGameId  uint
 	KeepTime     string
 	BookUrl      string
+	BookSha      string
 }
 
 func NextGame(httpClient *http.Client, hostname string, params map[string]string) (NextGameResponse, error) {
