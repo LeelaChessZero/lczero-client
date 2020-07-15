@@ -61,7 +61,7 @@ var (
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel      = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
-	cacheDir      = flag.String("cache", "", "Directory to use for downloaded networks cache")
+	cacheDir      = flag.String("cache", "", "Directory to use for downloaded files cache (NOT cleared)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	runId         = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
@@ -849,7 +849,7 @@ func makeCacheDir(dir string) string {
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := makeCacheDir("client-cache")
-	if keepTime != inf {
+	if keepTime != inf && *cacheDir == "" {
 		err := removeAllExcept(dir, sha, keepTime)
 		if err != nil {
 			log.Printf("Failed to remove old network(s): %v", err)
