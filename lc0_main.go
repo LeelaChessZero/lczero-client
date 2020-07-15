@@ -815,8 +815,7 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 	return lock, err
 }
 
-func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
-	dir := "client-cache"
+func makeCacheDir(dir string) string {
 	if len(*cacheDir) != 0 {
 		dir = *cacheDir
 	} else {
@@ -845,6 +844,11 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 		}
 	}
 	os.MkdirAll(dir, os.ModePerm)
+	return dir
+}
+
+func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
+	dir := makeCacheDir("client-cache")
 	if keepTime != inf {
 		err := removeAllExcept(dir, sha, keepTime)
 		if err != nil {
@@ -905,8 +909,7 @@ func checkValidBook(path string, sha string) (string, error) {
 }
 
 func getBook(httpClient *http.Client, book_url string, sha string) (string, error) {
-	dir := "books"
-	os.MkdirAll(dir, os.ModePerm)
+	dir := makeCacheDir("books")
 	u, err := url.Parse(book_url)
 	if err != nil {
 		log.Println("Unable to parse book URL")
@@ -982,9 +985,16 @@ func nextGame(httpClient *http.Client, count int) error {
 	log.Printf("serverParams: %s", serverParams)
 
 	if nextGame.BookUrl != "" {
-		_, err := getBook(&http.Client{}, nextGame.BookUrl, nextGame.BookSha)
+		book, err := getBook(&http.Client{}, nextGame.BookUrl, nextGame.BookSha)
 		if err != nil {
 			return err
+		}
+		// Replace the book file with the correct path
+		for i := range serverParams {
+			if strings.HasPrefix(serverParams[i], "--openings-pgn=") {
+				serverParams[i] = "--openings-pgn=" + book
+				break
+			}
 		}
 	}
 
