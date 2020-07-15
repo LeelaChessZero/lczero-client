@@ -884,7 +884,31 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	return checkValidNetwork(dir, sha)
 }
 
-func getBook(httpClient *http.Client, book_url string) (string, error) {
+func checkValidBook(path string, sha string) (string, error) {
+	// File already exists?
+	_, err := os.Stat(path)
+	if err == nil {
+		file, _ := os.Open(path)
+		sum := sha256.New()
+		_, err := io.Copy(sum, file);
+		got := fmt.Sprintf("%x", sum.Sum(nil))
+		if sha != got {
+			text := fmt.Sprintf("book sha mismatch want:\n%s\ngot\n%s\n", sha, got)
+			err = errors.New(text)
+		}
+		file.Close()
+		if err != nil {
+			fmt.Printf("Deleting invalid book...\n")
+			os.Remove(path)
+			return path, err
+		} else {
+			return path, nil
+		}
+	}
+	return path, err
+}
+
+func getBook(httpClient *http.Client, book_url string, sha string) (string, error) {
 	dir := makeCacheDir("books")
 	u, err := url.Parse(book_url)
 	if err != nil {
@@ -894,7 +918,7 @@ func getBook(httpClient *http.Client, book_url string) (string, error) {
 	s := strings.Split(u.Path, "/")
 	book_name := s[len(s)-1]
 	path := filepath.Join(dir, book_name)
-	_, err = os.Stat(path)
+	_, err = checkValidBook(path, sha)
 	if err == nil {
 		// Book is there, use it.
 		return path, nil
@@ -937,7 +961,7 @@ func getBook(httpClient *http.Client, book_url string) (string, error) {
 	// Ensure tmpfile is erased
 	os.Remove(out.Name())
 
-	return path, err
+	return checkValidBook(path, sha)
 }
 
 func nextGame(httpClient *http.Client, count int) error {
@@ -961,7 +985,7 @@ func nextGame(httpClient *http.Client, count int) error {
 	log.Printf("serverParams: %s", serverParams)
 
 	if nextGame.BookUrl != "" {
-		book, err := getBook(&http.Client{}, nextGame.BookUrl)
+		book, err := getBook(&http.Client{}, nextGame.BookUrl, nextGame.BookSha)
 		if err != nil {
 			return err
 		}
