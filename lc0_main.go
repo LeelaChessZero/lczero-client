@@ -61,7 +61,7 @@ var (
 	backopts = flag.String("backend-opts", "",
 		`Options for the lc0 mux. backend. Example: --backend-opts="cudnn(gpu=1)"`)
 	parallel      = flag.Int("parallelism", -1, "Number of games to play in parallel (-1 for default)")
-	cacheDir      = flag.String("cache", "", "Directory to use for downloaded files cache (NOT cleared)")
+	cacheDir      = flag.String("cache", "", "Directory to use for downloaded files cache (if it exists)")
 	useTestServer = flag.Bool("use-test-server", false, "Set host name to test server.")
 	runId         = flag.Uint("run", 0, "Which training run to contribute to (default 0 to let server decide)")
 	keep          = flag.Bool("keep", false, "Do not delete old network files")
@@ -816,10 +816,8 @@ func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
 }
 
 func makeCacheDir(dir string) string {
-	if len(*cacheDir) != 0 {
-		dir = *cacheDir
-	} else {
-		userCache := ""
+	userCache := *cacheDir
+	if len(userCache) == 0 {
 		if runtime.GOOS == "linux" {
 			userCache = os.Getenv("XDG_CACHE_HOME")
 			if len(userCache) == 0 {
@@ -834,13 +832,14 @@ func makeCacheDir(dir string) string {
 				userCache = homeDir + "/Library/Caches"
 			}
 		}
-
-		if len(userCache) != 0 {
-			_, err := os.Stat(userCache)
-			if err == nil {
+	}
+	if len(userCache) != 0 {
+		_, err := os.Stat(userCache)
+		if err == nil {
+			if len(*cacheDir) == 0 {
 				userCache = filepath.Join(userCache, "lc0")
-				dir = filepath.Join(userCache, dir)
 			}
+			dir = filepath.Join(userCache, dir)
 		}
 	}
 	os.MkdirAll(dir, os.ModePerm)
@@ -849,7 +848,7 @@ func makeCacheDir(dir string) string {
 
 func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, error) {
 	dir := makeCacheDir("client-cache")
-	if keepTime != inf && *cacheDir == "" {
+	if keepTime != inf {
 		err := removeAllExcept(dir, sha, keepTime)
 		if err != nil {
 			log.Printf("Failed to remove old network(s): %v", err)
