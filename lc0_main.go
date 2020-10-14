@@ -70,6 +70,7 @@ var (
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
 	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
 	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
+	cudnn         = flag.Bool("cudnn", true, "Prefer the cudnn backend (if available)")
 	settingsPath  = flag.String("config", "", "JSON configuration file to use")
 )
 
@@ -303,7 +304,7 @@ func checkLc0() {
 		hasCuda = true
 		parallelism32 = true
 	}
-	if bytes.Contains(out, []byte("cudnn-auto")) {
+	if bytes.Contains(out, []byte("cudnn-auto")) && *cudnn {
 		hasCudnn = true
 		parallelism32 = true
 	}
