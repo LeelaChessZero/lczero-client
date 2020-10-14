@@ -429,7 +429,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				fmt.Println(line)
 				if parallelism == 32 && parallelism32 && !strings.Contains(line, "fp16") {
 					parallelism32 = false
-					if mode == "selfplay" {
+					if mode == "selfplay" && *parallel <= 0 {
 						log.Println("Restarting with default parallelism")
 						c.Retry <- true
 					}
