@@ -41,10 +41,11 @@ var (
 	pendingNextGame *client.NextGameResponse
 	randId          int
 	hasCudnn        bool
-	hasCudnnFp16    bool
+	hasCuda         bool
 	hasOpenCL       bool
 	hasEigen        bool
 	hasDx           bool
+	parallelism32   bool
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
@@ -69,6 +70,7 @@ var (
 	trainOnly     = flag.Bool("train-only", false, "Do not play match games")
 	report_host   = flag.Bool("report-host", false, "Send hostname to server for more fine-grained statistics")
 	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
+	cudnn         = flag.Bool("cudnn", true, "Prefer the cudnn backend (if available)")
 	settingsPath  = flag.String("config", "", "JSON configuration file to use")
 )
 
@@ -133,7 +135,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "29",
+		"version":    "30",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 		"hostname":   *localHost,
@@ -298,14 +300,13 @@ func checkLc0() {
 	if bytes.Contains(out, []byte("dx12")) {
 		hasDx = true
 	}
-	if bytes.Contains(out, []byte("cudnn-fp16")) {
-		hasCudnnFp16 = true
+	if bytes.Contains(out, []byte("cuda-auto")) {
+		hasCuda = true
+		parallelism32 = true
 	}
-	if bytes.Contains(out, []byte("cudnn")) {
+	if bytes.Contains(out, []byte("cudnn-auto")) && *cudnn {
 		hasCudnn = true
-		if hasCudnnFp16 && bytes.Index(out, []byte("cudnn")) == bytes.LastIndex(out, []byte("cudnn")) {
-			hasCudnn = false
-		}
+		parallelism32 = true
 	}
 	if bytes.Contains(out, []byte("opencl")) {
 		hasOpenCL = true
@@ -358,7 +359,7 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 	}
 	// Check the dx12 backend if it is the first time or we changed net, but only if no higher
 	// priority backend is available.
-	if !hasCudnnFp16 && !hasCudnn && hasDx && testedDxNet != networkPath {
+	if !hasCuda && !hasCudnn && hasDx && testedDxNet != networkPath {
 		checkDx(networkPath)
 		testedDxNet = networkPath
 	}
@@ -372,13 +373,16 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			}
 		}
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=%s", *backopts))
-	} else if hasCudnnFp16 {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-fp16%v", sGpu))
-		if parallelism <= 0 {
+	} else if hasCudnn {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn-auto%v", sGpu))
+		if parallelism <= 0 && parallelism32 {
 			parallelism = 32
 		}
-	} else if hasCudnn {
-		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cudnn%v", sGpu))
+	} else if hasCuda {
+		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=backend=cuda-auto%v", sGpu))
+		if parallelism <= 0 && parallelism32 {
+			parallelism = 32
+		}
 	} else if hasDx {
 		c.Cmd.Args = append(c.Cmd.Args, fmt.Sprintf("--backend-opts=check(freq=1e-5,atol=5e-1,dx12%v)", sGpu))
 	} else if hasOpenCL {
@@ -421,13 +425,14 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "Unknown command line flag"):
 				fmt.Println(line)
 				log.Fatal("You probably have an old lc0 version")
-			case strings.Contains(line, "Your GPU doesn't support FP16"):
-				log.Println("GPU doesn't support the cudnn-fp16 backend")
-				if *backopts == "" {
-					hasCudnnFp16 = false
-					c.Retry <- true
-				} else {
-					log.Fatal("Terminating")
+			case strings.Contains(line, "Switching to"):
+				fmt.Println(line)
+				if parallelism == 32 && parallelism32 && !strings.Contains(line, "fp16") {
+					parallelism32 = false
+					if mode == "selfplay" && *parallel <= 0 {
+						log.Println("Restarting with default parallelism")
+						c.Retry <- true
+					}
 				}
 			case strings.HasPrefix(line, "resign_report "):
 				args := strings.Split(line, " ")
@@ -1105,7 +1110,7 @@ func maybeSetTrainOnly() {
 			found = true
 		}
 	})
-	if !found && !hasCudnn && !hasCudnnFp16 && !hasDx {
+	if !found && !hasCudnn && !hasCuda && !hasDx {
 		*trainOnly = true
 		log.Println("Will only run training games, use -train-only=false to override")
 	}
