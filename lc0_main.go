@@ -425,6 +425,8 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "Unknown command line flag"):
 				fmt.Println(line)
 				log.Fatal("You probably have an old lc0 version")
+			case strings.Contains(line, "GPU: GeForce GTX 16"):
+				fallthrough // Does not contain "fp16" so the following works fine.
 			case strings.Contains(line, "Switching to"):
 				fmt.Println(line)
 				if parallelism == 32 && parallelism32 && !strings.Contains(line, "fp16") {
@@ -894,7 +896,7 @@ func checkValidBook(path string, sha string) (string, error) {
 	if err == nil {
 		file, _ := os.Open(path)
 		sum := sha256.New()
-		_, err := io.Copy(sum, file);
+		_, err := io.Copy(sum, file)
 		got := fmt.Sprintf("%x", sum.Sum(nil))
 		if sha != got {
 			text := fmt.Sprintf("book sha mismatch want:\n%s\ngot\n%s\n", sha, got)
