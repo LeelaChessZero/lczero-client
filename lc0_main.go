@@ -189,7 +189,8 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 			} else if strings.Contains(version, "rc") {
 				log.Printf("It is a release candidate")
 			}
-			log.Fatal("You probably need the latest release")
+			log.Printf("You probably need the latest release")
+			os.Exit(5)
 		}
 		break
 	}
