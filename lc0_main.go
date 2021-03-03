@@ -1136,7 +1136,7 @@ func main() {
 	}
 	dir, _ := os.Getwd()
 	fi, err := os.Stat(path.Join(dir, lc0Exe))
-	if err == nil && !fi.Mode().Perm().IsDir() {
+	if err == nil && !fi.Mode().IsDir() {
 		lc0Exe = path.Join(dir, lc0Exe)
 	}
 	checkLc0()
