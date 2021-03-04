@@ -135,7 +135,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "30",
+		"version":    "31",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 		"hostname":   *localHost,
@@ -189,7 +189,8 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 			} else if strings.Contains(version, "rc") {
 				log.Printf("It is a release candidate")
 			}
-			log.Fatal("You probably need the latest release")
+			log.Printf("You probably need the latest release")
+			os.Exit(5)
 		}
 		break
 	}
@@ -425,6 +426,8 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 			case strings.HasPrefix(line, "Unknown command line flag"):
 				fmt.Println(line)
 				log.Fatal("You probably have an old lc0 version")
+			case strings.Contains(line, "GPU: GeForce GTX 16"):
+				fallthrough // Does not contain "fp16" so the following works fine.
 			case strings.Contains(line, "Switching to"):
 				fmt.Println(line)
 				if parallelism == 32 && parallelism32 && !strings.Contains(line, "fp16") {
@@ -894,7 +897,7 @@ func checkValidBook(path string, sha string) (string, error) {
 	if err == nil {
 		file, _ := os.Open(path)
 		sum := sha256.New()
-		_, err := io.Copy(sum, file);
+		_, err := io.Copy(sum, file)
 		got := fmt.Sprintf("%x", sum.Sum(nil))
 		if sha != got {
 			text := fmt.Sprintf("book sha mismatch want:\n%s\ngot\n%s\n", sha, got)
@@ -1133,7 +1136,7 @@ func main() {
 	}
 	dir, _ := os.Getwd()
 	fi, err := os.Stat(path.Join(dir, lc0Exe))
-	if err == nil && !fi.Mode().Perm().IsDir() {
+	if err == nil && !fi.Mode().IsDir() {
 		lc0Exe = path.Join(dir, lc0Exe)
 	}
 	checkLc0()
