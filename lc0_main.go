@@ -862,7 +862,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 			log.Printf("Failed to remove old network(s): %v", err)
 		}
 	}
-	path, err := checkValidNetwork(dir, sha, run)
+	path, err := checkValidNetwork(dir, sha)
 	if err == nil {
 		// There is already a valid network. Use it.
 		return path, nil
