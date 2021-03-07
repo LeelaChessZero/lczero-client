@@ -4,6 +4,7 @@
 package main
 
 import (
+	"net"
 	"bufio"
 	"bytes"
 	"compress/gzip"
@@ -886,7 +887,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
 	if err != nil {
 		log.Printf("Network download failed: %v", err)
-		if runId == 1 && err.(type) == net.Error {
+		if int(runId) == 1 && errros.Is(err, net.Error) {
 			log.Printf("Slow network. Probably you should switch to run2. ")
 		}
 		return "", err
@@ -1226,7 +1227,7 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
-	httpClient := &http.Client{Timeout:300 * Time.seconds}
+	httpClient := &http.Client{Timeout:300 * time.Second}
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
