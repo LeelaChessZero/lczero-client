@@ -4,7 +4,6 @@
 package main
 
 import (
-	"net"
 	"bufio"
 	"bytes"
 	"compress/gzip"
