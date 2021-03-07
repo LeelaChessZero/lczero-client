@@ -887,10 +887,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	if err != nil {
 		log.Printf("Network download failed: %v", err)
 		if runId == 1 && err.(type) == net.Error {
-			log.Printf("Slow network. Switching to run2. ")
-			runId = 2
-			main()
-			return "", err
+			log.Printf("Slow network. Probably you should switch to run2. ")
 		}
 		return "", err
 	}
@@ -1229,7 +1226,7 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
-	httpClient := &http.Client{Timeout:120 * Time.seconds}
+	httpClient := &http.Client{Timeout:300 * Time.seconds}
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
