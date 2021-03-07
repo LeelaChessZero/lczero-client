@@ -862,7 +862,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 			log.Printf("Failed to remove old network(s): %v", err)
 		}
 	}
-	path, err := checkValidNetwork(dir, sha)
+	path, err := checkValidNetwork(dir, sha, run)
 	if err == nil {
 		// There is already a valid network. Use it.
 		return path, nil
@@ -886,6 +886,11 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
 	if err != nil {
 		log.Printf("Network download failed: %v", err)
+		if runId == 1 && err.(type) == net.Error {
+			log.Printf("Slow network. Switching to run2. ")
+			runId = 2
+			main()
+		}
 		return "", err
 	}
 	return checkValidNetwork(dir, sha)
@@ -1223,7 +1228,7 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Timeout:120 * Time.seconds}
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
