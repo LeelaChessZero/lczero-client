@@ -873,8 +873,15 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 
 	if err != nil {
 		if err == lockfile.ErrBusy {
-			log.Println("Download initiated by other client")
-			return "", err
+			log.Println("Download initiated by other client - waiting")
+			for i := 0; i < 60; i++ {
+				time.Sleep(time.Second)
+				path, err := checkValidNetwork(dir, sha)
+				if err == nil {
+					return path, nil
+				}
+			}
+			return "", errors.New("Timed out")
 		} else {
 			log.Fatalf("Unable to lock: %v", err)
 		}
@@ -883,12 +890,18 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	// Lockfile acquired, download it
 	defer lock.Unlock()
 	fmt.Println("Downloading network...")
-	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
-	if err != nil {
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			log.Println("Waiting 10 seconds before retrying")
+			time.Sleep(10 * time.Second)
+		}
+		err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+		if err == nil {
+			return checkValidNetwork(dir, sha)
+		}
 		log.Printf("Network download failed: %v", err)
-		return "", err
 	}
-	return checkValidNetwork(dir, sha)
+	return "", err
 }
 
 func checkValidBook(path string, sha string) (string, error) {
