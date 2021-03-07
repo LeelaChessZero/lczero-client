@@ -890,6 +890,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 			log.Printf("Slow network. Switching to run2. ")
 			runId = 2
 			main()
+			return "", err
 		}
 		return "", err
 	}
