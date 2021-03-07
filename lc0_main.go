@@ -887,7 +887,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
 	if err != nil {
 		log.Printf("Network download failed: %v", err)
-		if int(runId) == 1 && errros.Is(err, net.Error) {
+		if int(*runId) == uint(1) && errors.Is(err, net.Error) {
 			log.Printf("Slow network. Probably you should switch to run2. ")
 		}
 		return "", err
