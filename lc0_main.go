@@ -1223,7 +1223,7 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Timeout:300 * time.Second}
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
