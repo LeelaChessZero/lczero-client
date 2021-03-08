@@ -48,6 +48,7 @@ var (
 	hasEigen        bool
 	hasDx           bool
 	parallelism32   bool
+	quiet           bool
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
@@ -89,12 +90,12 @@ type GameTask struct {
 }
  
 func (t *GameTask) Run() {
-	err error
-	err := nextGame(t.cli, t.ctr)
+	var err error
+	err = nextGame(t.cli, t.ctr)
 	if err != nil {
 		if err.Error() == "retry" {
 			time.Sleep(1 * time.Second)
-			err := nextGame(t.cli, t.ctr)
+			err = nextGame(t.cli, t.ctr)
 		}
 		log.Print(err)
 		log.Print("Sleeping for 30 seconds...")
@@ -1271,6 +1272,13 @@ func main() {
 	var gpunum int
 	gpunum = getGpuNumber()
 	fmt.Printf("Detected %v GPU(s)\n", gpunum)
+	
+	quiet = gpunum > 1
+	if quiet {
+		fmt.Printf("quiet_mode: on")
+	} else {
+		fmt.Printf("quiet_mode: off")
+	}
 
 	httpClient := &http.Client{Timeout:300 * time.Second}
 	startTime = time.Now()
