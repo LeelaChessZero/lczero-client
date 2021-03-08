@@ -48,7 +48,6 @@ var (
 	hasEigen        bool
 	hasDx           bool
 	parallelism32   bool
-	quiet           bool
 	testedDxNet     string
 
 	lc0Exe           = "lc0"
@@ -60,6 +59,7 @@ var (
 	user      = flag.String("user", "", "Username")
 	password  = flag.String("password", "", "Password")
 	gpu       = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
+	quiet     = flag.Bool("quiet", false, "force quiet mode or force non quiet mode")
 	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -87,6 +87,16 @@ type Settings struct {
 type GameTask struct { 
 	cli *http.Client 
 	ctr int
+}
+
+func isFlagPassed(name string) bool {
+    found := false
+    flag.Visit(func(f *flag.Flag) {
+        if f.Name == name {
+            found = true
+        }
+    })
+    return found
 }
  
 func (t *GameTask) Run() {
@@ -423,7 +433,9 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		c.Cmd.Args = append(c.Cmd.Args, "--no-share-trees")
 	}
 
-	fmt.Printf("Args: %v\n", c.Cmd.Args)
+	if !*quiet {
+		fmt.Printf("Args: %v\n", c.Cmd.Args)
+	}
 
 	stdout, err := c.Cmd.StdoutPipe()
 	if err != nil {
@@ -1024,7 +1036,10 @@ func nextGame(httpClient *http.Client, count int) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("serverParams: %s", serverParams)
+	if !*quiet {
+		log.Println(*quiet)
+		log.Printf("serverParams: %s", serverParams)
+	}
 
 	if nextGame.BookUrl != "" {
 		book, err := getBook(&http.Client{}, nextGame.BookUrl, nextGame.BookSha)
@@ -1160,6 +1175,7 @@ func getGpuNumber() (int) {
 	gpu, err := ghw.GPU()
 	if err != nil {
 		fmt.Printf("Error getting GPU info: %v", err)
+		return 0
 	}
 
 	return len(gpu.GraphicsCards)
@@ -1273,11 +1289,14 @@ func main() {
 	gpunum = getGpuNumber()
 	fmt.Printf("Detected %v GPU(s)\n", gpunum)
 	
-	quiet = gpunum > 1
-	if quiet {
-		fmt.Printf("quiet_mode: on")
+	if !isFlagPassed("quiet") {
+		*quiet = gpunum > 1
+	}
+
+	if *quiet {
+		fmt.Println("quiet_mode: on")
 	} else {
-		fmt.Printf("quiet_mode: off")
+		fmt.Println("quiet_mode: off")
 	}
 
 	httpClient := &http.Client{Timeout:300 * time.Second}
