@@ -33,6 +33,8 @@ import (
 
 	"github.com/Tilps/chess"
 	"github.com/nightlyone/lockfile"
+	"github.com/jaypipes/ghw"
+	"github.com/shettyh/threadpool"
 )
 
 var (
@@ -79,6 +81,25 @@ type Settings struct {
 	User      string
 	Pass      string
 	Localhost string
+}
+
+type GameTask struct { 
+	cli *http.Client 
+	ctr int
+}
+ 
+func (t *GameTask) Run() {
+	err error
+	err := nextGame(t.cli, t.ctr)
+	if err != nil {
+		if err.Error() == "retry" {
+			time.Sleep(1 * time.Second)
+			err := nextGame(t.cli, t.ctr)
+		}
+		log.Print(err)
+		log.Print("Sleeping for 30 seconds...")
+		time.Sleep(30 * time.Second)
+	}
 }
 
 const inf = "inf"
@@ -1134,6 +1155,15 @@ func maybeSetTrainOnly() {
 	}
 }
 
+func getGpuNumber() (int) {
+	gpu, err := ghw.GPU()
+	if err != nil {
+		fmt.Printf("Error getting GPU info: %v", err)
+	}
+
+	return len(gpu.GraphicsCards)
+}
+
 func main() {
 	fmt.Printf("Lc0 client version %v\n", getExtraParams()["version"])
 
@@ -1238,19 +1268,18 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
+	var gpunum int
+	gpunum = getGpuNumber()
+	fmt.Printf("Detected %v GPU(s)\n", gpunum)
+
 	httpClient := &http.Client{Timeout:300 * time.Second}
 	startTime = time.Now()
+	pool := threadpool.NewThreadPool(gpunum,100)
 	for i := 0; ; i++ {
-		err := nextGame(httpClient, i)
-		if err != nil {
-			if err.Error() == "retry" {
-				time.Sleep(1 * time.Second)
-				continue
-			}
-			log.Print(err)
-			log.Print("Sleeping for 30 seconds...")
-			time.Sleep(30 * time.Second)
-			continue
+		task := &GameTask{httpClient, i}
+		pool.Execute(task)
+		if i % gpunum == 0 {
+			time.Sleep(time.Second * 10)
 		}
 	}
 }
