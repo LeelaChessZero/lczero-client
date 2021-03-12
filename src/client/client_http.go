@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -109,8 +108,8 @@ func UploadMatchResult(httpClient *http.Client, hostname string, match_game_id u
 	return postParams(httpClient, hostname+"/match_result", params, nil)
 }
 
-func DownloadNetwork(httpClient *http.Client, hostname string, networkPath string, sha string) error {
-	uri := hostname + fmt.Sprintf("/get_network?sha=%s", sha)
+func DownloadNetwork(httpClient *http.Client, uriPrefix string, networkPath string, sha string) error {
+	uri := uriPrefix + sha
 	r, err := httpClient.Get(uri)
 	if err != nil {
 		return err
