@@ -115,6 +115,10 @@ func DownloadNetwork(httpClient *http.Client, uriPrefix string, networkPath stri
 		return err
 	}
 
+	if r.StatusCode >= 400 {
+		return errors.New("Network server gave error status.")
+	}
+
 	dir, _ := filepath.Split(networkPath)
 	out, err := ioutil.TempFile(dir, sha+"_tmp")
 	if err != nil {
