@@ -52,11 +52,12 @@ var (
 	defaultLocalHost = "Unknown"
 	gpuType          = "Unknown"
 
-	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
-	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
-	user      = flag.String("user", "", "Username")
-	password  = flag.String("password", "", "Password")
-	gpu       = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
+	localHost     = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
+	hostname      = flag.String("hostname", "http://api.lczero.org", "Address of the server")
+	networkMirror = flag.String("network-mirror", "", "Alternative url prefix to download networks from.")
+	user          = flag.String("user", "", "Username")
+	password      = flag.String("password", "", "Password")
+	gpu           = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
 	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -135,7 +136,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "32",
+		"version":    "33",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 		"hostname":   *localHost,
@@ -873,8 +874,15 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 
 	if err != nil {
 		if err == lockfile.ErrBusy {
-			log.Println("Download initiated by other client")
-			return "", err
+			log.Println("Download initiated by other client - waiting")
+			for i := 0; i < 60; i++ {
+				time.Sleep(time.Second)
+				path, err := checkValidNetwork(dir, sha)
+				if err == nil {
+					return path, nil
+				}
+			}
+			return "", errors.New("Timed out")
 		} else {
 			log.Fatalf("Unable to lock: %v", err)
 		}
@@ -883,12 +891,18 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	// Lockfile acquired, download it
 	defer lock.Unlock()
 	fmt.Println("Downloading network...")
-	err = client.DownloadNetwork(httpClient, *hostname, path, sha)
-	if err != nil {
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			log.Println("Waiting 10 seconds before retrying")
+			time.Sleep(10 * time.Second)
+		}
+		err = client.DownloadNetwork(httpClient, *networkMirror, path, sha)
+		if err == nil {
+			return checkValidNetwork(dir, sha)
+		}
 		log.Printf("Network download failed: %v", err)
-		return "", err
 	}
-	return checkValidNetwork(dir, sha)
+	return "", err
 }
 
 func checkValidBook(path string, sha string) (string, error) {
@@ -1064,9 +1078,11 @@ func nextGame(httpClient *http.Client, count int) error {
 					return
 				}
 				if ng.Type != nextGame.Type || ng.Sha != nextGame.Sha {
+					// Prefetch the next net before terminating game.
 					if ng.Type == "match" {
-						// Prefetch the next net before terminating game.
 						getNetwork(httpClient, ng.CandidateSha, inf)
+					} else {
+						getNetwork(httpClient, ng.Sha, inf)
 					}
 					pendingNextGame = &ng
 					return
@@ -1159,6 +1175,10 @@ func main() {
 		*hostname = "http://testserver.lczero.org"
 	}
 
+	if len(*networkMirror) == 0 {
+		*networkMirror = *hostname + "/get_network?sha="
+	}
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	if len(*settingsPath) == 0 {
@@ -1223,7 +1243,7 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Timeout: 300 * time.Second}
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
