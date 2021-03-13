@@ -6,15 +6,15 @@
 trap "exit" INT
 
 rm -f lc0
-git clone --recurse-submodules https://github.com/LeelaChessZero/lc0.git
+git clone --depth 1 --recurse-submodules https://github.com/LeelaChessZero/lc0.git
 TAG=
 ERR=
 FIRST=true
-while :
+while [ -d lc0 ]
 do
   cd lc0
 
-  git fetch --tags --all
+  git fetch --tags --depth 1
   NEW_TAG=$(git tag --list |grep -v rc |tail -1)
   if [ "$TAG" == "$NEW_TAG" ]
   then
