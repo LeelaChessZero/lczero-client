@@ -14,7 +14,8 @@ Pre-reqs:
 # go get -u github.com/notnil/chess
 go get -u github.com/Tilps/chess
 go get -u github.com/nightlyone/lockfile
-
+go get -u github.com/jaypipes/ghw"
+go get -u github.com/shettyh/threadpool
 ```
 
 Pull or download the `master` branch
