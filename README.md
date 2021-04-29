@@ -61,7 +61,7 @@ GOOS=linux GOARCH=amd64 go build -o lczero-client_linux
 
 # Go module support 
 
-Added by executing:
+Dependend go modules were added by executing:
 
 ```
 go get 'github.com/Tilps/chess@master'    
@@ -74,3 +74,8 @@ go: github.com/Tilps/chess master => v0.0.0-20200409092358-c35715299813
 ```
 
 This version number can then be used in the `go.mod` file
+
+Whenever you want to update the version do the above `go get` step and there will be a new version number generated that you can put in the existing `go.mod` file.
+
+Just use the command `go mod download` to update go's module cache.
+building should work with `go build lc0_main.go`
