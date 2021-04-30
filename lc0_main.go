@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"client"
+	"github.com/LeelaChessZero/lczero-client/src/client"
 
 	"github.com/Tilps/chess"
 	"github.com/nightlyone/lockfile"
