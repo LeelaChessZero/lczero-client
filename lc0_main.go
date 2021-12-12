@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"client"
+	"github.com/LeelaChessZero/lczero-client/src/client"
 
 	"github.com/Tilps/chess"
 	"github.com/nightlyone/lockfile"
@@ -52,11 +52,12 @@ var (
 	defaultLocalHost = "Unknown"
 	gpuType          = "Unknown"
 
-	localHost = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
-	hostname  = flag.String("hostname", "http://api.lczero.org", "Address of the server")
-	user      = flag.String("user", "", "Username")
-	password  = flag.String("password", "", "Password")
-	gpu       = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
+	localHost     = flag.String("localhost", "", "Localhost name to send to the server when reporting\n(defaults to Unknown, overridden by the configuration file)")
+	hostname      = flag.String("hostname", "http://api.lczero.org", "Address of the server")
+	networkMirror = flag.String("network-mirror", "", "Alternative url prefix to download networks from.")
+	user          = flag.String("user", "", "Username")
+	password      = flag.String("password", "", "Password")
+	gpu           = flag.Int("gpu", -1, "GPU to use (ignored if --backend-opts used)")
 	//	debug    = flag.Bool("debug", false, "Enable debug mode to see verbose output and save logs")
 	lc0Args  = flag.String("lc0args", "", "")
 	backopts = flag.String("backend-opts", "",
@@ -135,7 +136,7 @@ func getExtraParams() map[string]string {
 	return map[string]string{
 		"user":       *user,
 		"password":   *password,
-		"version":    "32",
+		"version":    "33",
 		"token":      strconv.Itoa(randId),
 		"train_only": strconv.FormatBool(*trainOnly),
 		"hostname":   *localHost,
@@ -365,11 +366,11 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 		testedDxNet = networkPath
 	}
 	if *backopts != "" {
-		// Check against small token blacklist, currently only "mlh", "random" and "recordreplay"
+		// Check against small token blacklist.
 		tokens := regexp.MustCompile("[,=().0-9]").Split(*backopts, -1)
 		for _, token := range tokens {
 			switch token {
-			case "mlh", "random", "recordreplay":
+			case "mlh", "random", "recordreplay", "trivial":
 				log.Fatalf("Not accepted in --backend-opts: %s", token)
 			}
 		}
@@ -895,7 +896,7 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 			log.Println("Waiting 10 seconds before retrying")
 			time.Sleep(10 * time.Second)
 		}
-		err = client.DownloadNetwork(httpClient, *hostname, path, sha)
+		err = client.DownloadNetwork(httpClient, *networkMirror, path, sha)
 		if err == nil {
 			return checkValidNetwork(dir, sha)
 		}
@@ -1174,6 +1175,10 @@ func main() {
 		*hostname = "http://testserver.lczero.org"
 	}
 
+	if len(*networkMirror) == 0 {
+		*networkMirror = *hostname + "/get_network?sha="
+	}
+
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	if len(*settingsPath) == 0 {
@@ -1238,7 +1243,7 @@ func main() {
 		*localHost = defaultLocalHost
 	}
 
-	httpClient := &http.Client{Timeout:300 * time.Second}
+	httpClient := &http.Client{Timeout: 300 * time.Second}
 	startTime = time.Now()
 	for i := 0; ; i++ {
 		err := nextGame(httpClient, i)
