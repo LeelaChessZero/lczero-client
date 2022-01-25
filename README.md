@@ -39,7 +39,17 @@ For testing, you can also point the client at a different server:
 ```
 ./lczero-client --hostname=http://127.0.0.1:8080 --user=test --password=asdf
 ```
+# Testing
 
+Pre-reqs
+```
+go get -u "github.com/stretchr/testify/assert"
+```
+to execute a unit test go to appropriate path,
+for example /src/client/ and type 
+```
+go test
+```
 # Cross-compiling
 
 One of the main reasons I picked go was it's amazing support for cross-compiling.
