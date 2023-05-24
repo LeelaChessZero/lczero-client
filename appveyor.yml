@@ -13,7 +13,7 @@ environment:
     GOOS: darwin
 install:
   - go get -u github.com/Tilps/chess
-  - go get -u github.com/nightlyone/lockfile
+  - go get -u github.com/gofrs/flock
 build_script:
   - go build -o lc0-training-client%NAME% lc0_main.go
 artifacts:
