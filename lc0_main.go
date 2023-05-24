@@ -32,7 +32,7 @@ import (
 	"github.com/LeelaChessZero/lczero-client/src/client"
 
 	"github.com/Tilps/chess"
-	"github.com/nightlyone/lockfile"
+	"github.com/gofrs/flock"
 )
 
 var (
@@ -812,16 +812,12 @@ func removeAllExcept(dir string, sha string, keepTime string) error {
 	return nil
 }
 
-func acquireLock(dir string, sha string) (lockfile.Lockfile, error) {
+func acquireLock(dir string, sha string) (*flock.Flock, bool, error) {
 	lockpath, _ := filepath.Abs(filepath.Join(dir, sha+".lck"))
-	lock, err := lockfile.New(lockpath)
-	if err != nil {
-		// Unknown error. Exit.
-		log.Fatalf("Cannot init lockfile: %v", err)
-	}
+	lock := flock.New(lockpath)
 	// Attempt to acquire lock
-	err = lock.TryLock()
-	return lock, err
+	success, err := lock.TryLock()
+	return lock, success, err
 }
 
 func makeCacheDir(dir string) string {
@@ -870,10 +866,10 @@ func getNetwork(httpClient *http.Client, sha string, keepTime string) (string, e
 	}
 
 	// Otherwise, let's download it
-	lock, err := acquireLock(dir, sha)
+	lock, lockHeld, err := acquireLock(dir, sha)
 
-	if err != nil {
-		if err == lockfile.ErrBusy {
+	if err != nil || !lockHeld {
+		if !lockHeld {
 			log.Println("Download initiated by other client - waiting")
 			for i := 0; i < 60; i++ {
 				time.Sleep(time.Second)
@@ -946,10 +942,10 @@ func getBook(httpClient *http.Client, book_url string, sha string) (string, erro
 	}
 
 	// Otherwise, let's download it
-	lock, err := acquireLock(dir, book_name)
+	lock, lockHeld, err := acquireLock(dir, book_name)
 
-	if err != nil {
-		if err == lockfile.ErrBusy {
+	if err != nil || !lockHeld {
+		if !lockHeld {
 			log.Println("Book download initiated by other client")
 			return "", err
 		} else {
