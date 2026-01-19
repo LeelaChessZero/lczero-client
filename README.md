@@ -79,3 +79,42 @@ Whenever you want to update the version do the above `go get` step and there wil
 
 Just use the command `go mod download` to update go's module cache.
 building should work with `go build lc0_main.go`
+
+# Docker (GPU)
+
+This repository includes a `Dockerfile` for building an NVIDIA-GPU-enabled image that bundles:
+ - `lc0` engine (built from source)
+ - `lc0-training-client` (downloaded from GitHub releases)
+
+The container expects a single persistence mount at `/data`:
+ - `/data/config` (XDG config home)
+ - `/data/cache`  (XDG cache home)
+
+Build:
+
+    docker build -t lc0-training-client:test .
+
+Test (no GPU required):
+
+    docker run --rm lc0-training-client:test --help
+    docker run --rm --entrypoint /app/lc0 lc0-training-client:test --help
+
+Test GPU access:
+
+    docker run --rm --gpus all nvidia/cuda:12.9.1-base-ubuntu22.04 nvidia-smi
+
+Run (persist config/cache on host):
+
+    mkdir -p ~/.lc0-training
+    docker run --gpus all \
+      --user $(id -u):$(id -g) \
+      -v ~/.lc0-training:/data \
+      lc0-training-client:test \
+      --user=USERNAME --password=PASSWORD
+
+Override versions:
+
+    docker build -t lc0-training-client:test \
+      --build-arg LC0_VERSION=v0.32.1 \
+      --build-arg CLIENT_VERSION=v34 \
+      .
