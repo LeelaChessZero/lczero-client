@@ -79,3 +79,22 @@ Whenever you want to update the version do the above `go get` step and there wil
 
 Just use the command `go mod download` to update go's module cache.
 building should work with `go build lc0_main.go`
+
+# Docker (GPU)
+
+See [`docker/README.md`](docker/README.md) for full documentation.
+
+Quick start:
+
+    docker build -f docker/Dockerfile.cuda -t lc0-training-client .
+    docker run --rm lc0-training-client --help
+    docker run --rm --entrypoint /app/lc0 lc0-training-client --help
+
+Run (persist config/cache on host):
+
+    mkdir -p ~/.lc0-training
+    docker run --gpus all \
+      --user $(id -u):$(id -g) \
+      -v ~/.lc0-training:/data \
+      lc0-training-client \
+      --user=USERNAME --password=PASSWORD
