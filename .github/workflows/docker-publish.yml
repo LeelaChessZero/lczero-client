@@ -1,0 +1,184 @@
+name: Build and Publish Docker Image
+
+on:
+  # Client release published (tag like v34)
+  release:
+    types: [published]
+
+  # lc0 repo dispatch (for PR3 later)
+  repository_dispatch:
+    types: [lc0-release]
+
+  # Manual trigger for testing / hotfix builds
+  workflow_dispatch:
+    inputs:
+      lc0_version:
+        description: "lc0 version tag (e.g., v0.32.1). Leave blank to use Dockerfile default."
+        required: false
+        default: ""
+      client_version:
+        description: "Client version tag (e.g., v34). Leave blank to use Dockerfile default."
+        required: false
+        default: ""
+      push:
+        description: "Push to GHCR (set false for dry-run testing)"
+        type: boolean
+        required: false
+        default: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: leelachesszero/lc0-training-client
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read default versions from Dockerfile
+        id: defaults
+        run: |
+          set -euo pipefail
+          DEFAULT_LC0_VERSION="$(grep -E '^ARG LC0_VERSION=' docker/Dockerfile.cuda | head -n1 | cut -d= -f2)"
+          DEFAULT_CLIENT_VERSION="$(grep -E '^ARG CLIENT_VERSION=' docker/Dockerfile.cuda | head -n1 | cut -d= -f2)"
+          echo "default_lc0_version=$DEFAULT_LC0_VERSION" >> "$GITHUB_OUTPUT"
+          echo "default_client_version=$DEFAULT_CLIENT_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Determine versions + push behavior
+        id: versions
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DISPATCH_LC0_VERSION: ${{ github.event.client_payload.lc0_version }}
+          DISPATCH_CLIENT_VERSION: ${{ github.event.client_payload.client_version }}
+          INPUT_LC0_VERSION: ${{ github.event.inputs.lc0_version }}
+          INPUT_CLIENT_VERSION: ${{ github.event.inputs.client_version }}
+          INPUT_PUSH: ${{ github.event.inputs.push }}
+          DEFAULT_LC0_VERSION: ${{ steps.defaults.outputs.default_lc0_version }}
+          DEFAULT_CLIENT_VERSION: ${{ steps.defaults.outputs.default_client_version }}
+        run: |
+          set -euo pipefail
+
+          LC0_VERSION="$DEFAULT_LC0_VERSION"
+          CLIENT_VERSION="$DEFAULT_CLIENT_VERSION"
+          DO_PUSH="true"
+
+          if [ "$EVENT_NAME" = "release" ]; then
+            # Release tag is the client version (e.g. v34)
+            if [ -n "${RELEASE_TAG:-}" ]; then
+              CLIENT_VERSION="$RELEASE_TAG"
+            fi
+          elif [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            # lc0 release triggers (PR3)
+            if [ -n "${DISPATCH_LC0_VERSION:-}" ]; then
+              LC0_VERSION="$DISPATCH_LC0_VERSION"
+            fi
+            if [ -n "${DISPATCH_CLIENT_VERSION:-}" ]; then
+              CLIENT_VERSION="$DISPATCH_CLIENT_VERSION"
+            fi
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ -n "${INPUT_LC0_VERSION:-}" ]; then
+              LC0_VERSION="$INPUT_LC0_VERSION"
+            fi
+            if [ -n "${INPUT_CLIENT_VERSION:-}" ]; then
+              CLIENT_VERSION="$INPUT_CLIENT_VERSION"
+            fi
+            if [ "${INPUT_PUSH:-true}" = "false" ]; then
+              DO_PUSH="false"
+            fi
+          fi
+
+          {
+            echo "lc0_version=$LC0_VERSION"
+            echo "client_version=$CLIENT_VERSION"
+            echo "do_push=$DO_PUSH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate GHCR tags
+        id: tags
+        env:
+          LC0_VERSION: ${{ steps.versions.outputs.lc0_version }}
+          CLIENT_VERSION: ${{ steps.versions.outputs.client_version }}
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          {
+            echo "tags<<EOF"
+            echo "${REGISTRY}/${IMAGE_NAME}:latest"
+            echo "${REGISTRY}/${IMAGE_NAME}:lc0-${LC0_VERSION}"
+            echo "${REGISTRY}/${IMAGE_NAME}:client-${CLIENT_VERSION}"
+            echo "${REGISTRY}/${IMAGE_NAME}:lc0-${LC0_VERSION}_client-${CLIENT_VERSION}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build locally first (no push), run sanity checks, then push.
+      - name: Build image (local)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.cuda
+          load: true
+          tags: lc0-training-client:test
+          build-args: |
+            LC0_VERSION=${{ steps.versions.outputs.lc0_version }}
+            CLIENT_VERSION=${{ steps.versions.outputs.client_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Test client --help
+        run: docker run --rm lc0-training-client:test --help
+
+      - name: Test engine --help (entrypoint override)
+        run: docker run --rm --entrypoint /app/lc0 lc0-training-client:test --help
+
+      - name: Created timestamp
+        id: created
+        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: steps.versions.outputs.do_push == 'true' && github.repository_owner == 'LeelaChessZero'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (GHCR)
+        if: steps.versions.outputs.do_push == 'true' && github.repository_owner == 'LeelaChessZero'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.cuda
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            LC0_VERSION=${{ steps.versions.outputs.lc0_version }}
+            CLIENT_VERSION=${{ steps.versions.outputs.client_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.created.outputs.created }}
+
+      - name: Summary
+        run: |
+          echo "## Docker build summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**lc0:** ${{ steps.versions.outputs.lc0_version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Client:** ${{ steps.versions.outputs.client_version }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Push:** ${{ steps.versions.outputs.do_push }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Tags" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.tags.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
