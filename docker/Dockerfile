@@ -1,7 +1,7 @@
 # ==============================================================================
 # STAGE 1: ENGINE BUILDER (C++ / CUDA)
 # ==============================================================================
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS engine_builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -21,7 +21,7 @@ WORKDIR /app
 
 # 3. Fetch Lc0
 ARG LC0_REPO=https://github.com/LeelaChessZero/lc0
-ARG LC0_BRANCH=release/0.32
+ARG LC0_BRANCH
 RUN echo "Fetching Lc0: ${LC0_BRANCH}" && \
     git clone -b ${LC0_BRANCH} ${LC0_REPO} lc0 && \
     cd lc0 && \
@@ -29,10 +29,7 @@ RUN echo "Fetching Lc0: ${LC0_BRANCH}" && \
 
 # 4. Compile Lc0
 WORKDIR /app/lc0
-# -Dplain_cuda=true   : Native CUDA backend
-# -Dnative_cuda=false : Allow running on different GPUs than the build machine
-# --prefix /app/dist  : Install to a clean folder for copying
-ARG LC0_BUILD_OPTS="-Dplain_cuda=true -Dnative_cuda=false -Dnative_arch=false -Dopencl=false -Dcudnn=false -Donnx=false"
+ARG LC0_BUILD_OPTS
 RUN meson setup build \
     ${LC0_BUILD_OPTS} \
     --prefix /app/dist \
@@ -64,7 +61,7 @@ RUN go mod tidy && \
 # ==============================================================================
 # STAGE 3: RUNTIME (The Final Image)
 # ==============================================================================
-ARG CUDA_VERSION=12.9.1
+ARG CUDA_VERSION
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
