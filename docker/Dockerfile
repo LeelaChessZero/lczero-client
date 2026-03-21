@@ -1,7 +1,7 @@
 # ==============================================================================
 # STAGE 1: ENGINE BUILDER (C++ / CUDA)
 # ==============================================================================
-ARG CUDA_VERSION
+ARG CUDA_VERSION=12.9.1
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS engine_builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -29,7 +29,7 @@ RUN echo "Fetching Lc0: ${LC0_BRANCH}" && \
 
 # 4. Compile Lc0
 WORKDIR /app/lc0
-ARG LC0_BUILD_OPTS
+ARG LC0_BUILD_OPTS="-Dplain_cuda=true -Dnative_cuda=false -Dnative_arch=false -Dopencl=false -Dcudnn=false -Donnx=false"
 RUN meson setup build \
     ${LC0_BUILD_OPTS} \
     --prefix /app/dist \
@@ -61,14 +61,16 @@ RUN go mod tidy && \
 # ==============================================================================
 # STAGE 3: RUNTIME (The Final Image)
 # ==============================================================================
-ARG CUDA_VERSION
-FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04
+ARG CUDA_VERSION=12.9.1
+FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1. Install Runtime Dependencies
-#    We need libprotobuf (matches dev version 3.12.4), OpenBLAS, and OpenMP
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG CUDA_VERSION
+RUN CUDA_PKG=$(echo ${CUDA_VERSION} | cut -d. -f1-2 | tr . -) && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libcublas-${CUDA_PKG} \
     libprotobuf23 \
     libopenblas-base \
     libgomp1 \
@@ -81,9 +83,5 @@ WORKDIR /app
 COPY --from=engine_builder /app/dist/bin/lc0 ./lc0
 COPY --from=client_builder /src/client-binary ./client
 
-# 3. Setup Environment
-#    Ensure Lc0 can find the client if needed, or vice-versa
-ENV LC0_PATH=/app/lc0
-
-# 4. Default Command
+# 3. Default Command
 ENTRYPOINT ["./client"]
