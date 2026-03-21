@@ -1,0 +1,49 @@
+name: Publish Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      lc0_branch:
+        description: "LeelaChessZero/lc0 branch, tag, or commit SHA"
+        required: true
+        default: "release/0.32"
+      client_branch:
+        description: "LeelaChessZero/lczero-client branch"
+        required: true
+        default: "release"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: leelachesszero/lczero-client
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          build-args: |
+            LC0_BRANCH=${{ inputs.lc0_branch }}
+            CLIENT_BRANCH=${{ inputs.client_branch }}
