@@ -12,10 +12,9 @@ on:
         required: true
         default: "release"
       custom_tags:
-        description: "Tags, one per line (e.g. v0.32). Add 'live' to push auto-update to existing clients."
+        description: "Image tags, comma-separated (e.g. latest, v0.32, live)"
         required: false
         default: "latest"
-        type: string
       cuda_version:
         description: "CUDA base image version"
         required: true
@@ -52,10 +51,11 @@ jobs:
         id: tags
         run: |
           TAGS=""
-          while IFS= read -r tag; do
+          IFS=',' read -ra PARTS <<< "${{ inputs.custom_tags }}"
+          for tag in "${PARTS[@]}"; do
             tag=$(echo "$tag" | xargs)
             [ -n "$tag" ] && TAGS="${TAGS}${TAGS:+,}${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
-          done <<< "${{ inputs.custom_tags }}"
+          done
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
