@@ -1,7 +1,8 @@
 # ==============================================================================
 # STAGE 1: ENGINE BUILDER (C++ / CUDA)
 # ==============================================================================
-FROM nvidia/cuda:12.9.1-devel-ubuntu22.04 AS engine_builder
+ARG CUDA_VERSION=12.9.1
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS engine_builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -31,13 +32,9 @@ WORKDIR /app/lc0
 # -Dplain_cuda=true   : Native CUDA backend
 # -Dnative_cuda=false : Allow running on different GPUs than the build machine
 # --prefix /app/dist  : Install to a clean folder for copying
+ARG LC0_BUILD_OPTS="-Dplain_cuda=true -Dnative_cuda=false -Dnative_arch=false -Dopencl=false -Dcudnn=false -Donnx=false"
 RUN meson setup build \
-    -Dplain_cuda=true \
-    -Dnative_cuda=false \
-    -Dnative_arch=false \
-    -Dopencl=false \
-    -Dcudnn=false \
-    -Donnx=false \
+    ${LC0_BUILD_OPTS} \
     --prefix /app/dist \
     --buildtype release && \
     ninja -C build install
@@ -67,7 +64,8 @@ RUN go mod tidy && \
 # ==============================================================================
 # STAGE 3: RUNTIME (The Final Image)
 # ==============================================================================
-FROM nvidia/cuda:12.9.1-runtime-ubuntu22.04
+ARG CUDA_VERSION=12.9.1
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 

@@ -11,6 +11,19 @@ on:
         description: "LeelaChessZero/lczero-client branch"
         required: true
         default: "release"
+      custom_tags:
+        description: "Tags, one per line (e.g. v0.32). Add 'live' to push auto-update to existing clients."
+        required: false
+        default: "latest"
+        type: string
+      cuda_version:
+        description: "CUDA base image version"
+        required: true
+        default: "12.9.1"
+      lc0_build_opts:
+        description: "Lc0 meson flags"
+        required: true
+        default: "-Dplain_cuda=true -Dnative_cuda=false -Dnative_arch=false -Dopencl=false -Dcudnn=false -Donnx=false"
 
 env:
   REGISTRY: ghcr.io
@@ -35,15 +48,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare tags
+        id: tags
+        run: |
+          TAGS=""
+          while IFS= read -r tag; do
+            tag=$(echo "$tag" | xargs)
+            [ -n "$tag" ] && TAGS="${TAGS}${TAGS:+,}${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
+          done <<< "${{ inputs.custom_tags }}"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             LC0_BRANCH=${{ inputs.lc0_branch }}
             CLIENT_BRANCH=${{ inputs.client_branch }}
+            CUDA_VERSION=${{ inputs.cuda_version }}
+            LC0_BUILD_OPTS=${{ inputs.lc0_build_opts }}
