@@ -1,0 +1,43 @@
+name: Retag Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "Existing tag to retag (e.g. latest, build-42)"
+        required: true
+        default: "latest"
+      new_tags:
+        description: "New tags, comma-separated (e.g. stable, v0.32)"
+        required: true
+        default: "latest,live"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: leelachesszero/lczero-client
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      packages: write
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and retag
+        run: |
+          SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.source_tag }}"
+          docker pull "$SOURCE"
+          IFS=',' read -ra TAGS <<< "${{ inputs.new_tags }}"
+          for tag in "${TAGS[@]}"; do
+            tag=$(echo "$tag" | xargs)
+            [ -n "$tag" ] && docker tag "$SOURCE" "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
+          done
+          docker push --all-tags "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
