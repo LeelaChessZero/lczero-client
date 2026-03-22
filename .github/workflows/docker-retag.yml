@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: "Existing tag to retag (e.g. latest, build-42)"
+        description: "Existing :tag @sha256:hash to retag (e.g. :latest, @sha256:87e07f7..)"
         required: true
-        default: "latest"
+        default: ":latest"
       new_tags:
-        description: "New tags, comma-separated (e.g. stable, v0.32)"
+        description: "tags to add, comma-separated (e.g. stable, v0.32)"
         required: true
-        default: "latest,live"
+        default: "live"
 
 env:
   REGISTRY: ghcr.io
@@ -31,9 +31,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate source tag
+        run: |
+          INPUT="${{ inputs.source_tag }}"
+          if [[ "$INPUT" != :* && "$INPUT" != @* ]]; then
+            echo "::error::source_tag must start with : or @ (e.g. :latest or @sha256:87e07f6...)"
+            exit 1
+          fi
+
       - name: Pull and retag
         run: |
-          SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ inputs.source_tag }}"
+          SOURCE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}${{ inputs.source_tag }}"
           docker pull "$SOURCE"
           IFS=',' read -ra TAGS <<< "${{ inputs.new_tags }}"
           for tag in "${TAGS[@]}"; do
