@@ -26,7 +26,7 @@ while true; do
     CHECKER=$!
 
     podman run -it --rm --name $NAME --device nvidia.com/gpu=all \
-        -v ./lc0-training-client-config.json:/app/lc0-training-client-config.json \
+        -v "$(pwd)/lc0-training-client-config.json":/app/lc0-training-client-config.json \
         $IMAGE "$@"
 
     kill $CHECKER 2>/dev/null
