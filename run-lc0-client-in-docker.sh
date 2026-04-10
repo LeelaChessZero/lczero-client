@@ -5,6 +5,12 @@ CHECK_PERIOD=600
 
 trap 'docker rm -f $NAME 2>/dev/null; exit 0' INT TERM
 
+if ! docker info 2>/dev/null | grep -q "Runtimes:.*nvidia"; then
+    echo "ERROR: NVIDIA Container Toolkit not found. Install it with:"
+    echo "  sudo apt install nvidia-container-toolkit && sudo systemctl restart docker"
+    exit 1
+fi
+
 docker image inspect $IMAGE >/dev/null 2>&1 || docker pull $IMAGE
 [ -f lc0-training-client-config.json ] || echo '{}' > lc0-training-client-config.json
 
