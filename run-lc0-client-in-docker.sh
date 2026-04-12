@@ -14,7 +14,7 @@ CHECK_PERIOD=600
 
 trap 'docker rm -f $NAME 2>/dev/null; exit 0' INT TERM
 
-docker image inspect $IMAGE >/dev/null 2>&1 || docker pull $IMAGE
+docker pull $IMAGE
 [ -f lc0-training-client-config.json ] || echo '{}' > lc0-training-client-config.json
 
 while true; do
