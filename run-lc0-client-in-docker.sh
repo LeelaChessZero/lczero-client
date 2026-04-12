@@ -1,15 +1,18 @@
 #!/bin/bash
-IMAGE="ghcr.io/leelachesszero/lczero-client:live"
+BASE="ghcr.io/leelachesszero/lczero-client"
+CUDA=$(nvidia-smi 2>/dev/null | awk -F'CUDA Version: ' 'NF>1{split($2,a," ");print a[1]}')
+VARIANTS="11.5:cuda11-live 12.9:cuda12-live"
+TAG=""
+for v in $VARIANTS; do
+    [ "$(printf '%s\n%s' "${v%%:*}" "$CUDA" | sort -V | head -1)" = "${v%%:*}" ] && TAG=${v#*:}
+done
+[ -z "$TAG" ] && { echo "CUDA $CUDA too old (need ≥11.5). Update your NVIDIA driver." >&2; exit 1; }
+IMAGE="$BASE:$TAG"
+
 NAME="lczero-client"
 CHECK_PERIOD=600
 
 trap 'docker rm -f $NAME 2>/dev/null; exit 0' INT TERM
-
-if ! docker info 2>/dev/null | grep -q "Runtimes:.*nvidia"; then
-    echo "ERROR: NVIDIA Container Toolkit not found. Install it with:"
-    echo "  sudo apt install nvidia-container-toolkit && sudo systemctl restart docker"
-    exit 1
-fi
 
 docker image inspect $IMAGE >/dev/null 2>&1 || docker pull $IMAGE
 [ -f lc0-training-client-config.json ] || echo '{}' > lc0-training-client-config.json
