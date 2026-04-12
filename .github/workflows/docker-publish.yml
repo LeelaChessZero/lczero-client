@@ -32,8 +32,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { cuda: "12.9.1", ubuntu: "22.04", protobuf: "23", suffix: "cuda12" }
-          - { cuda: "11.5.2", ubuntu: "20.04", protobuf: "17", suffix: "cuda11" }
+          - { cuda: "12.9.1", ubuntu: "22.04", protobuf: "23", gcc: "",   suffix: "cuda12" }
+          - { cuda: "11.5.2", ubuntu: "20.04", protobuf: "17", gcc: "11", suffix: "cuda11" }
 
     steps:
       - name: Checkout
@@ -60,3 +60,4 @@ jobs:
             CUDA_VERSION=${{ matrix.cuda }}
             UBUNTU_VERSION=${{ matrix.ubuntu }}
             LIBPROTOBUF_VERSION=${{ matrix.protobuf }}
+            GCC_INSTALL_VERSION=${{ matrix.gcc }}
