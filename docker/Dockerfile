@@ -96,6 +96,7 @@ WORKDIR /app
 
 # 2. Copy Artifacts from Builders
 COPY --from=engine_builder /app/dist/bin/lc0 ./lc0
+COPY --from=engine_builder /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /usr/lib/x86_64-linux-gnu/
 COPY --from=client_builder /src/client-binary ./client
 
 # 3. Default Command
