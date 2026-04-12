@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: "Existing :tag @sha256:hash to retag (e.g. :latest, @sha256:87e07f7..)"
+        description: "Existing :tag or @sha256:hash to retag (e.g. :cuda11-latest, @sha256:87e07f7..)"
         required: true
-        default: ":latest"
+        default: ":cuda11-latest"
       new_tags:
-        description: "tags to add, comma-separated (e.g. stable, v0.32)"
+        description: "tags to add, comma-separated (e.g. cuda11-live, cuda12-live)"
         required: true
-        default: "live"
+        default: "cuda11-live"
 
 env:
   REGISTRY: ghcr.io
@@ -35,7 +35,7 @@ jobs:
         run: |
           INPUT="${{ inputs.source_tag }}"
           if [[ "$INPUT" != :* && "$INPUT" != @* ]]; then
-            echo "::error::source_tag must start with : or @ (e.g. :latest or @sha256:87e07f6...)"
+            echo "::error::source_tag must start with : or @ (e.g. :cuda11-latest or @sha256:87e07f6...)"
             exit 1
           fi
 

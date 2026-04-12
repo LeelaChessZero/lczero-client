@@ -1,3 +1,28 @@
+# Running with Docker
+
+Requires an NVIDIA GPU and driver. The runner script auto-selects the right
+image variant based on what your driver supports, and then watches for updates
+to restart the container.
+
+- Driver with CUDA >= 12.9 (driver >= 575) -> `cuda12-live`
+- Driver with CUDA >= 11.5 (driver >= 495) -> `cuda11-live`
+
+## Prerequisites
+
+- NVIDIA driver installed (verify: `nvidia-smi`)
+- Docker + NVIDIA Container Toolkit:
+  https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+
+## Run
+
+```bash
+bash <(curl -s https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh) --user=USER --password=PASS [other flags...]
+# or, if you have the repo cloned:
+./run-lc0-client-in-docker.sh --user=USER --password=PASS [other flags...]
+```
+
+Config persists in `lc0-training-client-config.json` in the current directory.
+
 # Compiling
 
 You will need to install Go 1.9 or later.

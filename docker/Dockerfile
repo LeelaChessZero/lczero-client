@@ -2,7 +2,8 @@
 # STAGE 1: ENGINE BUILDER (C++ / CUDA)
 # ==============================================================================
 ARG CUDA_VERSION=12.9.1
-FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 AS engine_builder
+ARG UBUNTU_VERSION=22.04
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS engine_builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -62,16 +63,18 @@ RUN go mod tidy && \
 # STAGE 3: RUNTIME (The Final Image)
 # ==============================================================================
 ARG CUDA_VERSION=12.9.1
-FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu22.04
+ARG UBUNTU_VERSION=22.04
+FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # 1. Install Runtime Dependencies
 ARG CUDA_VERSION
+ARG LIBPROTOBUF_VERSION=23
 RUN CUDA_PKG=$(echo ${CUDA_VERSION} | cut -d. -f1-2 | tr . -) && \
     apt-get update && apt-get install -y --no-install-recommends \
     libcublas-${CUDA_PKG} \
-    libprotobuf23 \
+    libprotobuf${LIBPROTOBUF_VERSION} \
     libopenblas-base \
     libgomp1 \
     ca-certificates \

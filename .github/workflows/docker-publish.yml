@@ -11,14 +11,6 @@ on:
         description: "LeelaChessZero/lczero-client branch"
         required: true
         default: "release"
-      custom_tags:
-        description: "Image tags, comma-separated (e.g. latest, v0.32, live)"
-        required: false
-        default: "latest"
-      cuda_version:
-        description: "CUDA base image version"
-        required: true
-        default: "12.9.1"
       lc0_build_opts:
         description: "Lc0 meson flags"
         required: true
@@ -36,6 +28,13 @@ jobs:
       contents: read
       packages: write
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cuda: "12.9.1", ubuntu: "22.04", protobuf: "23", suffix: "cuda12" }
+          - { cuda: "11.5.2", ubuntu: "20.04", protobuf: "17", suffix: "cuda11" }
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,26 +46,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare tags
-        id: tags
-        run: |
-          TAGS=""
-          IFS=',' read -ra PARTS <<< "${{ inputs.custom_tags }}"
-          for tag in "${PARTS[@]}"; do
-            tag=$(echo "$tag" | xargs)
-            [ -n "$tag" ] && TAGS="${TAGS}${TAGS:+,}${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${tag}"
-          done
-          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
-
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
           push: true
-          tags: ${{ steps.tags.outputs.tags }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.suffix }}-latest
           build-args: |
             LC0_BRANCH=${{ inputs.lc0_branch }}
             CLIENT_BRANCH=${{ inputs.client_branch }}
-            CUDA_VERSION=${{ inputs.cuda_version }}
             LC0_BUILD_OPTS=${{ inputs.lc0_build_opts }}
+            CUDA_VERSION=${{ matrix.cuda }}
+            UBUNTU_VERSION=${{ matrix.ubuntu }}
+            LIBPROTOBUF_VERSION=${{ matrix.protobuf }}
