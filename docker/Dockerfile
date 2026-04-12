@@ -15,12 +15,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Upgrade Meson
+# 2. Ensure C++20 support (ubuntu20.04 ships GCC 9, which lacks <span>)
+ARG GCC_INSTALL_VERSION=""
+RUN if [ -n "$GCC_INSTALL_VERSION" ]; then \
+        apt-get update && apt-get install -y software-properties-common && \
+        add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+        apt-get update && \
+        apt-get install -y gcc-$GCC_INSTALL_VERSION g++-$GCC_INSTALL_VERSION && \
+        update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-$GCC_INSTALL_VERSION 100 && \
+        update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-$GCC_INSTALL_VERSION 100 && \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# 3. Upgrade Meson
 RUN pip3 install --upgrade meson
 
 WORKDIR /app
 
-# 3. Fetch Lc0
+# 4. Fetch Lc0
 ARG LC0_REPO=https://github.com/LeelaChessZero/lc0
 ARG LC0_BRANCH
 RUN echo "Fetching Lc0: ${LC0_BRANCH}" && \
@@ -28,7 +40,7 @@ RUN echo "Fetching Lc0: ${LC0_BRANCH}" && \
     cd lc0 && \
     git submodule update --init --recursive
 
-# 4. Compile Lc0
+# 5. Compile Lc0
 WORKDIR /app/lc0
 ARG LC0_BUILD_OPTS="-Dplain_cuda=true -Dnative_cuda=false -Dnative_arch=false -Dopencl=false -Dcudnn=false -Donnx=false"
 RUN meson setup build \
