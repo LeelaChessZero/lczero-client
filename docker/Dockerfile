@@ -68,7 +68,7 @@ WORKDIR /src/client
 # 2. Build Client
 # 'go mod tidy' fixes the missing dependency issues automatically
 RUN go mod tidy && \
-    go build -ldflags "-s -w" -o /src/client-binary .
+    CGO_ENABLED=0 go build -ldflags "-s -w" -o /src/client-binary .
 
 
 # ==============================================================================
