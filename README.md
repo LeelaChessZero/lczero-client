@@ -16,9 +16,14 @@ to restart the container.
 ## Run
 
 ```bash
+wget https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh
+bash run-lc0-client-in-docker.sh --user=USER --password=PASS [other flags...]
+```
+
+Or as a one-liner:
+
+```bash
 bash <(curl -s https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh) --user=USER --password=PASS [other flags...]
-# or, if you have the repo cloned:
-./run-lc0-client-in-docker.sh --user=USER --password=PASS [other flags...]
 ```
 
 Config persists in `lc0-training-client-config.json` in the current directory.
