@@ -1,4 +1,11 @@
 #!/bin/bash
+GPU=0
+ARGS=()
+for arg in "$@"; do
+    case $arg in --gpu=*) GPU=${arg#*=};; *) ARGS+=("$arg");; esac
+done
+set -- "${ARGS[@]}"
+
 BASE="ghcr.io/leelachesszero/lczero-client"
 CUDA=$(nvidia-smi 2>/dev/null | awk -F'CUDA Version: ' 'NF>1{split($2,a," ");print a[1]}')
 VARIANTS="11.5:cuda11-live 12.9:cuda12-live"
@@ -9,7 +16,7 @@ done
 [ -z "$TAG" ] && { echo "CUDA $CUDA too old (need ≥11.5). Update your NVIDIA driver." >&2; exit 1; }
 IMAGE="$BASE:$TAG"
 
-NAME="lczero-client"
+NAME="lczero-client-gpu$GPU"
 CHECK_PERIOD=600
 
 trap 'docker rm -f $NAME 2>/dev/null; exit 0' INT TERM
@@ -34,7 +41,7 @@ while true; do
     ) </dev/null &
     CHECKER=$!
 
-    docker run -it --rm --name $NAME --gpus all \
+    docker run -it --rm --name $NAME --gpus "device=$GPU" \
         -v "$(pwd)/lc0-training-client-config.json":/app/lc0-training-client-config.json \
         $IMAGE "$@"
 
