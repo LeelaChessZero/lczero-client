@@ -2,7 +2,10 @@
 GPU=0
 ARGS=()
 for arg in "$@"; do
-    case $arg in --gpu=*) GPU=${arg#*=};; *) ARGS+=("$arg");; esac
+    case $arg in
+        --gpu=*) GPU=${arg#*=};;
+        *) ARGS+=("$arg");;
+    esac
 done
 set -- "${ARGS[@]}"
 
