@@ -31,7 +31,7 @@ CHECK_PERIOD=600
 CONFIG_PATH="$PWD/lc0-training-client-config.json"
 
 # Keep restart state private to this script invocation.
-STATE_DIR=$(mktemp -d)
+STATE_DIR=$(mktemp -d -p "${TMPDIR:-/tmp}" "lczero-client-gpu$GPU.XXXXXX") || exit 1
 RESTART_FLAG="$STATE_DIR/restart"
 
 docker pull "$IMAGE"
