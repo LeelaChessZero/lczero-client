@@ -4,6 +4,7 @@ clone_folder: c:\gopath\src\github.com\LeelaChessZero\lczero-client
 
 environment:
   GOPATH: c:\gopath;c:\gopath\src\github.com\LeelaChessZero\lczero-client\
+  GO111MODULE: on
   matrix:
   - NAME: .exe
     GOOS: windows
@@ -12,10 +13,9 @@ environment:
   - NAME: -mac
     GOOS: darwin
 install:
-  - go get -u github.com/Tilps/chess
-  - go get -u github.com/gofrs/flock
+  - go mod download
 build_script:
-  - go build -o lc0-training-client%NAME% lc0_main.go
+  - go build -mod=readonly -o lc0-training-client%NAME% lc0_main.go
 artifacts:
   - path: lc0-training-client$(NAME)
     name: lc0-training-client
@@ -26,4 +26,3 @@ deploy:
       secure: USFAdwQKTXqOXQjCYQfzWvzRpUhvqJLBkN4hbOg+j876vDxGZHt9bMYayb5evePp
     on:
       appveyor_repo_tag: true
-
