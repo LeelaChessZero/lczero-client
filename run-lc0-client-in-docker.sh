@@ -69,5 +69,5 @@ while true; do
 done
 
 # Remove per-run state before returning Docker's exit status.
-rm -rf "$STATE_DIR"
+rm -r "$STATE_DIR"
 exit "$STATUS"
