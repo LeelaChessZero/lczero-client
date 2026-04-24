@@ -26,6 +26,18 @@ Or as a one-liner:
 bash <(curl -s https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh) --user=USER --password=PASS [other flags...]
 ```
 
+## Multiple GPUs
+
+To run on a specific GPU, use `--gpu=N` (default: `--gpu=0`). This is the
+only way to select a GPU — do not use `--backend-opts` for GPU selection.
+
+Run one instance per GPU:
+
+```bash
+bash run-lc0-client-in-docker.sh --gpu=0 --user=USER --password=PASS &
+bash run-lc0-client-in-docker.sh --gpu=1 --user=USER --password=PASS &
+```
+
 Config persists in `lc0-training-client-config.json` in the current directory.
 
 # Compiling
