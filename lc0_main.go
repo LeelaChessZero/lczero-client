@@ -73,6 +73,7 @@ var (
 	report_gpu    = flag.Bool("report-gpu", false, "Send gpu info to server for more fine-grained statistics")
 	cudnn         = flag.Bool("cudnn", true, "Prefer the cudnn backend (if available)")
 	settingsPath  = flag.String("config", "", "JSON configuration file to use")
+	keepData      = flag.Bool("keep-data", false, "Do not delete training data")
 )
 
 // Settings holds username and password.
@@ -200,10 +201,11 @@ func uploadGame(httpClient *http.Client, path string, pgn string,
 	var duration = time.Since(startTime)
 	var speed = int(float64(totalGames) / duration.Hours() * 24)
 	log.Printf("Completed %d games in %s time (%d games/day)", totalGames, duration, speed)
-
-	err := os.Remove(path)
-	if err != nil {
-		log.Printf("Failed to remove training file: %v", err)
+	if !*keepData {
+		err := os.Remove(path)
+		if err != nil {
+			log.Printf("Failed to remove training file: %v", err)
+		}
 	}
 
 	return nil
@@ -701,7 +703,7 @@ func train(httpClient *http.Client, ngr client.NextGameResponse,
 	defer func() {
 		// Remove the training dir when we're done training.
 		trainDir := trainDirHolder[0]
-		if trainDir != "" {
+		if trainDir != "" && !*keepData {
 			log.Printf("Removing traindir: %s", trainDir)
 			err := os.RemoveAll(trainDir)
 			if err != nil {
