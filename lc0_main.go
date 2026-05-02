@@ -240,43 +240,65 @@ func (c *cmdWrapper) openInput() {
 
 func convertMovesToPGN(moves []string, result string, start_ply_count int) string {
 	game := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}))
+	pgn := ""
+	move_no := 1
 	if len(moves) > 6 && moves[len(moves)-7] == "from_fen" {
 		fen := strings.Join(moves[len(moves)-6:], " ")
+		pgn += fmt.Sprintf("[FEN \"%s\"]\n", fen)
+		move_no, _ = strconv.Atoi(moves[len(moves)-1])
 		moves = moves[:len(moves)-7]
-		pair := &chess.TagPair{
-			Key:   "FEN",
-			Value: fen,
-		}
-		tagPairs := []*chess.TagPair{pair}
 		fen_func, _ := chess.FEN(fen)
-		game = chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}), fen_func, chess.TagPairs(tagPairs))
+		game = chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}), fen_func)
+	}
+	pgn += "\n"
+	position := game.Position()
+	if position.Turn() == chess.Black {
+		pgn += fmt.Sprintf("%d...", move_no)
 	}
 	for _, m := range moves {
+		if strings.HasPrefix(m, "(") {
+			// We use a game to get + and # annotations.
+			// Here position is before the previous move.
+			fen_func, _ := chess.FEN(position.String())
+			game2 := chess.NewGame(chess.UseNotation(chess.LongAlgebraicNotation{}), fen_func)
+			game2.MoveStr(strings.Trim(m, "()"))
+			game2_moves := game2.Moves()
+			var_move := game2_moves[len(game2_moves)-1]
+			var_move_str := chess.AlgebraicNotation{}.Encode(position, var_move)
+			if position.Turn() == chess.White {
+				pgn += fmt.Sprintf("(%d.%s) ", move_no, var_move_str)
+			} else {
+				pgn += fmt.Sprintf("(%d...%s) ", move_no-1, var_move_str)
+			}
+			continue
+		}
+		position = game.Position()
 		err := game.MoveStr(m)
 		if err != nil {
 			log.Fatalf("movstr: %v", err)
 		}
-	}
-	if game.Outcome() == chess.NoOutcome && len(game.EligibleDraws()) > 1 {
-		game.Draw(game.EligibleDraws()[1])
-	}
-	game2 := chess.NewGame()
-	b, err := game.MarshalText()
-	if err != nil {
-		log.Fatalf("MarshalText failed: %v", err)
-	}
-	b_str := string(b)
-	if strings.HasSuffix(b_str, " *") && result != "" {
-		to_append := "1/2-1/2"
-		if result == "whitewon" {
-			to_append = "1-0"
-		} else if result == "blackwon" {
-			to_append = "0-1"
+		game_moves := game.Moves()
+		move := game_moves[len(game_moves)-1]
+		move_str := chess.AlgebraicNotation{}.Encode(position, move)
+		if position.Turn() == chess.White {
+			pgn += fmt.Sprintf("%d.%s ", move_no, move_str)
+		} else {
+			pgn += fmt.Sprintf("%s ", move_str)
+			move_no++
 		}
-		b = []byte(strings.TrimRight(b_str, "*") + to_append)
 	}
-	game2.UnmarshalText(b)
-	return game2.String() + " {OL: " + strconv.Itoa(start_ply_count) + "}"
+
+	if result == "" {
+		pgn += "*"
+	} else if result == "whitewon" {
+		pgn += "1-0"
+	} else if result == "blackwon" {
+		pgn += "0-1"
+	} else {
+		pgn += "1/2-1/2"
+	}
+
+	return pgn + " {OL: " + strconv.Itoa(start_ply_count) + "}"
 }
 
 func createCmdWrapper() *cmdWrapper {
