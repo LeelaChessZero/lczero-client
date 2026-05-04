@@ -279,6 +279,28 @@ func convertMovesToPGN(moves []string, result string, start_ply_count int) strin
 	return game2.String() + " {OL: " + strconv.Itoa(start_ply_count) + "}"
 }
 
+func convertSANToPGN(moves []string, result string, start_ply_count int) string {
+	pgn := ""
+	if len(moves) > 6 && moves[len(moves)-7] == "from_fen" {
+		fen := strings.Join(moves[len(moves)-6:], " ")
+		moves = moves[:len(moves)-7]
+		pgn += "[FEN \"" + fen + "\"]\n"
+	}
+	pgn += "\n" + strings.Join(moves, " ") + " "
+
+	if result == "draw" {
+		pgn += "1/2-1/2"
+	} else if result == "whitewon" {
+		pgn += "1-0"
+	} else if result == "blackwon" {
+		pgn += "0-1"
+	} else {
+		pgn += "*"
+	}
+
+	return pgn + " {OL: " + strconv.Itoa(start_ply_count) + "}"
+}
+
 func createCmdWrapper() *cmdWrapper {
 	c := &cmdWrapper{
 		gi:       make(chan gameInfo),
@@ -459,6 +481,9 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 				idx1 := strings.Index(line, "trainingfile")
 				idx2 := strings.LastIndex(line, "gameid")
 				idx3 := strings.LastIndex(line, "moves")
+				if idx3 < 0 {
+					idx3 = strings.LastIndex(line, "san")
+				}
 				if idx1 < 0 || idx2 < 0 || idx3 < 0 {
 					log.Printf("Malformed gameready: %q", line)
 					break
@@ -481,7 +506,12 @@ func (c *cmdWrapper) launch(networkPath string, otherNetPath string, args []stri
 					start_ply_count, err = strconv.Atoi(line[idx6+15 : idx4-1])
 				}
 				file := line[idx1+13 : idx2-1]
-				pgn := convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
+				pgn := ""
+				if line[idx3] == 'm' {
+					pgn = convertMovesToPGN(strings.Split(line[idx3+6:len(line)], " "), result, start_ply_count)
+				} else {
+					pgn = convertSANToPGN(strings.Split(line[idx3+4:len(line)], " "), result, start_ply_count)
+				}
 				fmt.Printf("PGN: %s\n", pgn)
 				c.gi <- gameInfo{pgn: pgn, fname: file, fp_threshold: last_fp_threshold, player1: player, result: result}
 				last_fp_threshold = -1.0
