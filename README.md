@@ -1,4 +1,6 @@
-# Running with Docker
+# Leela Chess Zero Training Client
+
+## Running with Docker
 
 Requires an NVIDIA GPU and driver. The runner script auto-selects the right
 image variant based on what your driver supports, and then watches for updates
@@ -7,29 +9,35 @@ to restart the container.
 - Driver with CUDA >= 12.9 (driver >= 575) -> `cuda12-live`
 - Driver with CUDA >= 11.5 (driver >= 495) -> `cuda11-live`
 
-## Prerequisites
+### Prerequisites
 
 - NVIDIA driver installed (verify: `nvidia-smi`)
 - Docker + NVIDIA Container Toolkit:
   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
 
-## Run
+### Run
 
 ```bash
 wget https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh
-bash run-lc0-client-in-docker.sh --user=USER --password=PASS [other flags...]
+
+bash run-lc0-client-in-docker.sh \
+   --gpu=0 --user=USER --password=PASS [other flags...]
 ```
 
 Or as a one-liner:
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh) --user=USER --password=PASS [other flags...]
+bash <(curl -s https://raw.githubusercontent.com/LeelaChessZero/lczero-client/master/run-lc0-client-in-docker.sh) \
+   --gpu=0 --user=USER --password=PASS [other flags...]
 ```
 
-## Multiple GPUs
+`--user` and `--password` are optional; if not provided the client will prompt
+for them on startup and store them in `lc0-training-client-config.json` for
+future runs. `--gpu` is also optional and defaults to `0`.
 
-To run on a specific GPU, use `--gpu=N` (default: `--gpu=0`). This is the
-only way to select a GPU — do not use `--backend-opts` for GPU selection.
+To run on a specific GPU, use `--gpu=N` (default: `--gpu=0`, so it's also
+optional). This is the only way to select a GPU — do not use `--backend-opts`
+for GPU selection.
 
 Run one instance per GPU:
 
@@ -38,20 +46,22 @@ bash run-lc0-client-in-docker.sh --gpu=0 --user=USER --password=PASS &
 bash run-lc0-client-in-docker.sh --gpu=1 --user=USER --password=PASS &
 ```
 
-Config persists in `lc0-training-client-config.json` in the current directory.
-
-# Compiling
+## Compiling
 
 You will need to install Go 1.9 or later.
 
 Then, make sure to set up your GOPATH properly, eg. here is mine:
-```
+
+```bash
 export GOPATH=${HOME}/go:${HOME}/src/lczero-client
 ```
-Here, I've set my system install of go as the first entry, and then the lczero-client directory as the second.
+
+Here, I've set my system install of go as the first entry, and then the
+lczero-client directory as the second.
 
 Pre-reqs:
-```
+
+```bash
 # (Bug workaround, using Tilps instead)
 # go get -u github.com/notnil/chess
 go get -u github.com/Tilps/chess
@@ -68,49 +78,53 @@ If you get
 `.\lc0_main.go:1048:5: undefined: chess.GetLibraryVersion`
 you have a cached old version of Tilps/chess and need to run the Pre-reqs again.
 
-# Running
+## Running
 
 First copy the `lc0` executable into the same folder as the `lczero-client` executable.
 
 Then, run!  Username and password are required parameters.
-```
+
+```bash
 ./lczero-client --user=myusername --password=mypassword
 ```
 
 For testing, you can also point the client at a different server:
-```
+
+```bash
 ./lczero-client --hostname=http://127.0.0.1:8080 --user=test --password=asdf
 ```
 
-# Cross-compiling
+## Cross-compiling
 
 One of the main reasons I picked go was it's amazing support for cross-compiling.
 
 Pre-reqs:
-```
+
+```bash
 GOOS=windows GOARCH=amd64 go install
 GOOS=darwin GOARCH=amd64 go install
 GOOS=linux GOARCH=amd64 go install
 ```
 
 Building the client for each platform:
-```
+
+```bash
 GOOS=windows GOARCH=amd64 go build -o lczero-client.exe
 GOOS=darwin GOARCH=amd64 go build -o lczero-client_mac
 GOOS=linux GOARCH=amd64 go build -o lczero-client_linux
 ```
 
-
-# Go module support 
+## Go module support 
 
 Dependend go modules were added by executing:
 
-```
+```bash
 go get 'github.com/Tilps/chess@master'    
 ```
 
 gives something like:
-```
+
+```bash
 go: downloading github.com/Tilps/chess v0.0.0-20200409092358-c35715299813
 go: github.com/Tilps/chess master => v0.0.0-20200409092358-c35715299813
 ```
